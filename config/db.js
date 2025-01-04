@@ -2,6 +2,14 @@
 const mysql = require('mysql2');
 require('dotenv').config();  // Load environment variables
 
+// Log the database configuration for debugging
+console.log('Database Configuration:', {
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD ? '***' : 'Not Provided', // Mask password
+    database: process.env.DB_NAME
+});
+
 // Create a connection to the database
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
