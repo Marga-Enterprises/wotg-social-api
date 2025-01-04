@@ -1,88 +1,116 @@
-// app/controllers/auth.js
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcryptjs'); // Change to bcryptjs
 const jwt = require('jsonwebtoken');
-const db = require('../../config/db'); 
+const { ValidationError } = require('sequelize');
+const User = require('../models/User'); // Import your User model
+const validator = require('validator'); // Import the validator library for email validation
 
-// User Registration
-exports.register = async (req, res) => {
-    const { user_fname, user_lname, user_role, email, password, user_gender, user_mobile_number,
-        user_church_name, user_birthday, user_country, user_city, user_dgroup_leader,
-        approval_token, user_ministry, user_already_a_dgroup_leader, user_already_a_dgroup_member,
-        user_profile_picture, user_nickname, user_meeting_day, user_meeting_time, user_profile_banner } = req.body;
+const {
+    sendError,
+    sendSuccess,
+    convertMomentWithFormat,
+    getToken,
+    sendErrorUnauthorized,
+  } = require("../../utils/methods");
 
-    // Input validation
+require('dotenv').config();
+
+exports.createUser = async (req, res) => {
+    const { 
+        user_fname, 
+        user_lname, 
+        email, 
+        password, 
+        user_gender = null,  // Gender is optional, default to null
+    } = req.body;
+
+    // Validate required fields
     if (!user_fname || !user_lname || !email || !password) {
-        return res.status(400).json({ message: 'First name, last name, email, and password are required' });
+        return sendErrorUnauthorized(res, {}, 'First name, last name, email, and password are required.', 400, 101);
+    }
+
+    // Validate email format
+    if (!validator.isEmail(email)) {
+        return sendErrorUnauthorized(res, {}, 'Invalid email format.', 400, 102);
+    }
+
+    // Check if email is already used
+    try {
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return sendErrorUnauthorized(res, {}, 'Email is already in use.', 400, 103);
+        }
+    } catch (err) {
+        console.error('Database query error:', err);
+        return res.status(500).json({ error: 'Internal server error.' }); // Standard 500 error response
     }
 
     try {
-        // Check if the user already exists
-        db.query('SELECT * FROM users WHERE email = ?', [email], async (err, result) => {
-            if (err) return res.status(500).json({ message: 'Database error', error: err.message });
-            if (result.length > 0) {
-                return res.status(400).json({ message: 'User already exists' });
-            }
+        // Hash the password before saving
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-            // Hash password using bcrypt
-            const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Create new user
-            const query = `
-                INSERT INTO users 
-                (user_fname, user_lname, user_role, email, password, user_gender, user_mobile_number, 
-                user_church_name, user_birthday, user_country, user_city, user_dgroup_leader, 
-                approval_token, user_ministry, user_already_a_dgroup_leader, user_already_a_dgroup_member, 
-                user_profile_picture, user_nickname, user_meeting_day, user_meeting_time, user_profile_banner) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-            db.query(query, [
-                user_fname, user_lname, user_role, email, hashedPassword, user_gender, user_mobile_number, 
-                user_church_name, user_birthday, user_country, user_city, user_dgroup_leader, approval_token, 
-                user_ministry, user_already_a_dgroup_leader, user_already_a_dgroup_member, user_profile_picture, 
-                user_nickname, user_meeting_day, user_meeting_time, user_profile_banner
-            ], (err, result) => {
-                if (err) return res.status(500).json({ message: 'Error creating user', error: err.message });
-                res.status(201).json({ message: 'User registered successfully', userId: result.insertId });
-            });
+        // Create new user with 'member' as default role
+        const newUser = await User.create({
+            user_fname,
+            user_lname,
+            email,
+            password: hashedPassword, // Store the hashed password
+            user_gender, // Gender (optional, defaults to null if not provided)
+            user_role: 'member', // Default role set to 'member'
+            verification_token: null, // Initial value for verification token
         });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Registration failed', error: error.message });
+
+        // Send success response with user data (excluding password)
+        const { password: _, ...userWithoutPassword } = newUser.toJSON();
+        return sendSuccess(res, {
+            id: userWithoutPassword.id,
+            email: userWithoutPassword.email,
+            user_role: userWithoutPassword.user_role,
+            user_fname: userWithoutPassword.user_fname,
+            user_lname: userWithoutPassword.user_lname,
+            created_at: userWithoutPassword.created_at,
+            updated_at: userWithoutPassword.updated_at,
+        }, 'User created successfully!', 201, 0);
+
+    } catch (err) {
+        console.error('Sequelize error:', err);
+        if (err instanceof ValidationError) {
+            return sendErrorUnauthorized(res, {}, err.errors.map(e => e.message), 400, 106);
+        }
+        return res.status(500).json({ error: 'Internal server error.' }); // Standard 500 error response
     }
 };
 
-// User Login
-exports.login = async (req, res) => {
+
+
+exports.loginUser = async (req, res) => {
     const { email, password } = req.body;
 
+    // Validate required fields
     if (!email || !password) {
-        return res.status(400).json({ message: 'Email and password are required' });
+        return res.status(400).json({ error: 'Email and password are required.' });
     }
 
     try {
-        db.query('SELECT * FROM users WHERE email = ?', [email], async (err, result) => {
-            if (err) return res.status(500).json({ message: 'Database error', error: err.message });
-            if (result.length === 0) {
-                return res.status(404).json({ message: 'User not found' });
-            }
+        // Find user by email
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            // return res.status(401).json({ error: 'Invalid email or password.' });
+            return sendErrorUnauthorized(res, '', 'User not found.');
+        }
 
-            const user = result[0];
+        // Check if the password matches
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return sendErrorUnauthorized(res, '', 'Password Incorrect.');
+        }
 
-            // Check password
-            const isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch) {
-                return res.status(401).json({ message: 'Invalid credentials' });
-            }
+        // Generate JWT token (optional)
+        const token = jwt.sign({ user }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-            // Create JWT token
-            const token = jwt.sign({ id: user.id, username: user.user_fname }, process.env.JWT_SECRET, {
-                expiresIn: '1h',
-            });
-
-            res.status(200).json({ message: 'Login successful', token });
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Login failed', error: error.message });
+        // Send the response with user details and token
+        return sendSuccess(res, { token });
+    } catch (err) {
+        console.error('Sequelize error:', err);
+        res.status(500).json({ error: 'Internal server error.' });
     }
 };

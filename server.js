@@ -1,27 +1,26 @@
-// server.js
 const express = require('express');
-require('dotenv').config();  // Load environment variables from .env file
-const db = require('./config/db');  // Import the database connection
+const cors = require('cors');
 
-// Initialize the Express app
+require('dotenv').config();
+
+const sequelize = require('./config/db'); // Import Sequelize connection
+const authRoutes = require('./app/routes/auth'); // Import routes
+
 const app = express();
+const port = process.env.PORT || 4000;
 
-// Middleware to parse JSON request bodies
+// Middleware to parse JSON
 app.use(express.json());
 
-// Import the authentication routes
-const authRoutes = require('./app/routes/auth');
+// Enable CORS
+app.use(cors());
 
-// Use the authentication routes for '/auth' path
+// Use routes
 app.use('/auth', authRoutes);
 
-// Example route to check if the server is up and running
-app.get('/', (req, res) => {
-    res.send('Server is up and running!');
+// Start server
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
 });
 
-// Start the server on a specified port (from .env or default to 5000)
-const port = process.env.PORT || 5000;
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+module.exports = sequelize; // Export Sequelize connection

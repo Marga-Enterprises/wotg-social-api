@@ -1,14 +1,8 @@
-// app/routes/auth.js
 const express = require('express');
 const router = express.Router();
+const authController = require('../controllers/auth');
 
-// Import the authentication controller functions
-const { register, login } = require('../controllers/auth');
-
-// POST request to register a new user
-router.post('/register', register);
-
-// POST request to log in an existing user
-router.post('/login', login);
+router.post('/register', authController.createUser);
+router.post('/login', authController.loginUser);
 
 module.exports = router;
