@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-
 require('dotenv').config();
 
 const sequelize = require('./config/db'); // Import Sequelize connection
@@ -18,9 +17,15 @@ app.use(cors());
 // Use routes
 app.use('/auth', authRoutes);
 
-// Start server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
-});
-
-module.exports = sequelize; // Export Sequelize connection
+// Synchronize Sequelize models with the database
+sequelize.sync({ force: false })  // Set force: true only if you want to drop and recreate tables every time
+    .then(() => {
+        console.log('Database synchronized...');
+        // Start server after DB synchronization
+        app.listen(port, () => {
+            console.log(`Server running on http://localhost:${port}`);
+        });
+    })
+    .catch((err) => {
+        console.log('Error synchronizing the database:', err);
+    });
