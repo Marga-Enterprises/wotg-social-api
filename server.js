@@ -17,10 +17,12 @@ const port = process.env.PORT || 4000;
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: '*', // Allow all origins for testing
-        methods: ['GET', 'POST'],
+      origin: process.env.NODE_ENV === 'development' 
+        ? ['http://localhost:3000', 'https://www.explorevps.site']  // Allow localhost and explorevps.site in dev
+        : 'https://www.explorevps.site',  // Only allow production in production mode
+      methods: ['GET', 'POST'],
     },
-});
+  });
 
 // Middleware
 app.use(express.json());
