@@ -40,7 +40,7 @@ if (process.env.NODE_ENV === "production") {
 */
 io = new Server(server, {
     cors: {
-      origin: frontEndUrl, // Dynamically set the origin based on NODE_ENV
+      origin: ["https://explorevps.site", "https://www.explorevps.site"],
       methods: ['GET', 'POST', 'DELETE', 'PUT'],
     },
     transports: ['websocket', 'polling'], // Allow both WebSocket and Polling for development
