@@ -3,7 +3,13 @@ const cors = require('cors');
 require('dotenv').config(); // Load environment variables
 
 // Log all environment variables
-console.log('Environment Variables:', process.env);
+console.log('Environment Variables:', process.env.DB_HOST);
+console.log('Environment Variables:', process.env.DB_USER);
+console.log('Environment Variables:', process.env.DB_PASSWORD);
+console.log('Environment Variables:', process.env.DB_NAME);
+console.log('Environment Variables:', process.env.PORT);
+console.log('Environment Variables:', process.env.JWT_SECRET);
+console.log('Environment Variables:', process.env.NODE_ENV);
 
 const http = require('http'); // For wrapping Express with Socket.IO
 const { Server } = require('socket.io'); // Import Socket.IO
