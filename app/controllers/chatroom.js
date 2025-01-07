@@ -6,7 +6,14 @@ const {
     sendSuccess,
     getToken,
     sendErrorUnauthorized,
-  } = require("../../utils/methods");
+} = require("../../utils/methods");
+
+let io; // Global variable to hold the Socket.IO instance
+
+// Method to set `io`
+exports.setIO = (socketInstance) => {
+    io = socketInstance;
+};
 
 // Fetch all chatrooms
 exports.getAllChatrooms = async (req, res) => {
@@ -32,6 +39,12 @@ exports.createChatroom = async (req, res) => {
 
         try {
             const chatroom = await Chatroom.create({ name, type }); // Create a new chatroom
+
+            // Emit a real-time event for the new chatroom
+            if (io) {
+                io.emit('new_chatroom', chatroom);
+            }
+
             return sendSuccess(res, chatroom);
         } catch (error) {
             console.error('Error creating chatroom:', error);
@@ -41,3 +54,4 @@ exports.createChatroom = async (req, res) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+

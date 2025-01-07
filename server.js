@@ -28,8 +28,8 @@ app.use(cors());
 
 // Routes
 app.use('/auth', authRoutes);
-app.use('/chatrooms', chatroomRoutes);
-app.use('/messages', messageRoutes);
+app.use('/chatrooms', chatroomRoutes(io));
+app.use('/messages', messageRoutes(io));
 
 // Socket.IO implementation
 io.on('connection', (socket) => {
@@ -41,27 +41,9 @@ io.on('connection', (socket) => {
         console.log(`User ${socket.id} joined room ${room}`);
     });
 
-    // Send and broadcast a message
-    socket.on('send_message', async (data) => {
-        const { content, senderId, chatroomId } = data;
-
-        // Save message to the database (optional)
-        try {
-            const message = {
-                content,
-                senderId,
-                chatroomId,
-                createdAt: new Date(), // Simulating database timestamp
-            };
-
-            // Broadcast the message to all clients in the room
-            io.to(chatroomId).emit('receive_message', message);
-
-            console.log('Message sent and broadcast:', message);
-        } catch (error) {
-            console.error('Error handling message:', error);
-            socket.emit('error', { message: 'Failed to send message.' });
-        }
+    socket.on('leave_room', (room) => {
+        socket.leave(room);
+        console.log(`User ${socket.id} left room ${room}`);
     });
 
     // Handle disconnection

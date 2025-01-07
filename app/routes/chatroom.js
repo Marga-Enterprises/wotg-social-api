@@ -1,8 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const chatroomController = require('../controllers/chatroom'); // Import Chatroom Controller
 
-router.get('/', chatroomController.getAllChatrooms);
-router.post('/', chatroomController.createChatroom);
+module.exports = (io) => {
+    const chatroomController = require('../controllers/chatroom'); // Import Chatroom Controller
 
-module.exports = router;
+    // Fetch all chatrooms
+    router.get('/', chatroomController.getAllChatrooms);
+
+    // Create a new chatroom
+    router.post('/', chatroomController.createChatroom); 
+
+    return router;
+};

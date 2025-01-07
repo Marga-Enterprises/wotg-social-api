@@ -10,7 +10,7 @@ const {
 
 // Fetch messages by chatroom ID
 exports.getMessagesByChatroom = async (req, res) => {
-    let token = getToken(req.headers); 
+    let token = getToken(req.headers);
     if (token) {
         const { chatroomId } = req.params;
 
@@ -37,9 +37,9 @@ exports.getMessagesByChatroom = async (req, res) => {
     }
 };
 
-// Save a new message
-exports.sendMessage = async (req, res) => {
-    let token = getToken(req.headers); 
+// Save a new message and broadcast it
+exports.sendMessage = async (req, res, io) => {
+    let token = getToken(req.headers);
     if (token) {
         const { content, senderId, chatroomId } = req.body;
 
@@ -62,6 +62,11 @@ exports.sendMessage = async (req, res) => {
                     },
                 ],
             });
+
+            // Emit the new message to the chatroom
+            if (io) {
+                io.to(chatroomId).emit('new_message', fullMessage);
+            }
 
             return sendSuccess(res, fullMessage);
         } catch (error) {

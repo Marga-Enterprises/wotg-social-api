@@ -1,10 +1,11 @@
 const express = require('express');
-const messageController = require('../controllers/message'); // Import controller
-
 const router = express.Router();
 
-// Define routes
-router.get('/:chatroomId', messageController.getMessagesByChatroom);
-router.post('/', messageController.sendMessage);
+module.exports = (io) => {
+    const messageController = require('../controllers/message'); // Import controller
 
-module.exports = router; // Correctly export the router
+    router.get('/:chatroomId', messageController.getMessagesByChatroom);
+    router.post('/', (req, res) => messageController.sendMessage(req, res, io));
+
+    return router;
+};
