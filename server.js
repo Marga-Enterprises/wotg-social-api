@@ -12,36 +12,14 @@ const messageRoutes = require('./app/routes/message');
 
 const app = express();
 const port = process.env.PORT || 4000;
-
-// Determine the front-end URL based on the environment
-const frontEndUrl = 
-  process.env.NODE_ENV === "production"
-    ? "https://explorevps.site" // URL for production
-    : "http://localhost:3000"; // URL for development
-
-// Create an HTTP server
 const server = http.createServer(app);
 
-// Initialize io conditionally based on NODE_ENV
-let io;
-
-/*
-if (process.env.NODE_ENV === "production") {
-  io = new Server(server);
-} else {
-  io = new Server(server, {
+const io = new Server(server, {
     cors: {
-      origin: frontEndUrl, // Dynamically set the origin based on NODE_ENV
-      methods: ['GET', 'POST', 'DELETE', 'PUT'],
-    },
-    transports: ['websocket', 'polling'], // Allow both WebSocket and Polling for development
-  });
-}
-*/
-io = new Server(server, {
-    cors: {
-      origin: ["https://explorevps.site", "https://www.explorevps.site"],
-      methods: ['GET', 'POST', 'DELETE', 'PUT'],
+      origin: process.env.NODE_ENV === "production"
+        ? ["https://explorevps.site", "https://www.explorevps.site"] // URLs for production
+        : ["http://localhost:3000"], // URL for development
+      methods: ['GET', 'POST', 'DELETE', 'PUT'], // Allowed methods
     },
     transports: ['websocket', 'polling'], // Allow both WebSocket and Polling for development
 });
