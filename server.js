@@ -17,7 +17,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
       origin: process.env.NODE_ENV === "production"
-        ? ["https://community.wotgonline.com", "https://www.community.wotgonline.com"] // URLs for production
+        ? ["https://community.wotgonline.com", "https://www.wotgonline.com", "https://wotgonline.com"]
         : ["http://localhost:3000"], // URL for development
       methods: ['GET', 'POST', 'DELETE', 'PUT'], // Allowed methods
     },
