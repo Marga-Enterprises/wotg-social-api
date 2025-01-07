@@ -1,6 +1,10 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('dotenv').config(); // Load environment variables
+
+// Log all environment variables
+console.log('Environment Variables:', process.env);
+
 const http = require('http'); // For wrapping Express with Socket.IO
 const { Server } = require('socket.io'); // Import Socket.IO
 const sequelize = require('./config/db'); // Sequelize connection
