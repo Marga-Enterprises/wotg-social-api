@@ -1,6 +1,8 @@
+require('dotenv').config(); // Load environment variables
+
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config(); // Load environment variables
+
 
 // Log all environment variables
 console.log('Environment Variables:', process.env.DB_HOST);
