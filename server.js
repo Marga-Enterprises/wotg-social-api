@@ -25,13 +25,16 @@ const server = http.createServer(app);
 // Initialize io conditionally based on NODE_ENV
 let io;
 if (process.env.NODE_ENV === "production") {
-  io = new Server(server); // Default configuration for production
+  io = new Server(server, {
+    transports: ['websocket'], // Use only WebSocket in production
+  });
 } else {
   io = new Server(server, {
     cors: {
       origin: frontEndUrl, // Dynamically set the origin based on NODE_ENV
       methods: ['GET', 'POST', 'DELETE', 'PUT'],
     },
+    transports: ['websocket', 'polling'], // Allow both WebSocket and Polling for development
   });
 }
 
@@ -46,7 +49,7 @@ app.use('/messages', messageRoutes(io)); // Pass io to messageRoutes
 
 // Socket.IO implementation
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log(`User connected: ${socket.id}`);
 
   // Join a chatroom
   socket.on('join_room', (room) => {
@@ -61,7 +64,7 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    console.log(`User disconnected: ${socket.id}`);
   });
 });
 
