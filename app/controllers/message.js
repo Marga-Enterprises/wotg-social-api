@@ -1,5 +1,7 @@
 const Message = require('../models/Message'); // Import Message model
+const Subscription = require('../models/Subscription'); // Import Message model
 const User = require('../models/User'); // Import User model
+const webPush = require('web-push');
 
 const {
     sendError,
@@ -63,7 +65,32 @@ exports.sendMessage = async (req, res, io) => {
                 ],
             });
 
-            // Emit the new message to the chatroom
+            // Fetch the subscriptions for the sender's user (assuming users want notifications for messages)
+            const subscriptions = await Subscription.findAll({
+                where: { userId: senderId }, // Find subscriptions for the specific user
+            });
+
+            // Send notifications to all the users subscribed to this sender
+            const pushPromises = subscriptions.map(async (subscription) => {
+                const subscriptionObject = subscription.subscription; // Subscription object with endpoint and keys
+
+                try {
+                    await webPush.sendNotification(subscriptionObject, JSON.stringify({
+                        title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                        body: content,
+                        icon: '/images/icon.png', // Example, replace with actual icon
+                    }));
+                } catch (error) {
+                    console.error('Error sending push notification:', error);
+                    // Optionally handle expired/invalid subscriptions
+                    // e.g., by removing the subscription from the database if it's no longer valid
+                }
+            });
+
+            // Wait for all notifications to be sent
+            await Promise.all(pushPromises);
+
+            // Emit the new message to the chatroom via Socket.IO
             if (io) {
                 io.to(chatroomId).emit('new_message', fullMessage);
             }
@@ -77,3 +104,5 @@ exports.sendMessage = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
+

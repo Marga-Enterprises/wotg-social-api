@@ -1,21 +1,18 @@
 const path = require('path');
-
-// Forcefully load environment variables from the specific path of the .env file
-require('dotenv').config({
-  path: path.resolve(__dirname, '.env') // Forcefully specify the path to .env
-});
+const webPush = require('web-push');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
-
-const http = require('http'); // For wrapping Express with Socket.IO
-const { Server } = require('socket.io'); // Import Socket.IO
-const sequelize = require('./config/db'); // Sequelize connection
+const http = require('http');
+const { Server } = require('socket.io');
+const sequelize = require('./config/db');
 
 // Import routes
 const authRoutes = require('./app/routes/auth');
 const chatroomRoutes = require('./app/routes/chatroom');
 const messageRoutes = require('./app/routes/message');
+const subscriptionRoutes = require('./app/routes/subscription'); // Import subscription routes
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -31,6 +28,18 @@ const io = new Server(server, {
     transports: ['websocket', 'polling'], // Allow both WebSocket and Polling for development
 });
 
+// Web Push Configuration
+const vapidKeys = {
+  publicKey: process.env.VAPID_PUBLIC_KEY, // Set in your .env file
+  privateKey: process.env.VAPID_PRIVATE_KEY, // Set in your .env file
+};
+
+webPush.setVapidDetails(
+  'mailto:your-email@example.com', // Contact email
+  vapidKeys.publicKey,
+  vapidKeys.privateKey
+);
+
 // Middleware
 app.use(express.json());
 app.use(cors());
@@ -39,6 +48,7 @@ app.use(cors());
 app.use('/auth', authRoutes);
 app.use('/chatrooms', chatroomRoutes(io)); // Pass io to chatroomRoutes
 app.use('/messages', messageRoutes(io)); // Pass io to messageRoutes
+app.use('/subscriptions', subscriptionRoutes);  // Add subscription routes here
 
 // Socket.IO implementation
 io.on('connection', (socket) => {
