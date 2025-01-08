@@ -1,6 +1,11 @@
-// database.js
+const path = require('path');
+
+// Forcefully load environment variables from the specific path of the .env file
+require('dotenv').config({
+  path: path.resolve(__dirname, '.env') // Forcefully specify the path to .env
+});
+
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
 
 const sequelize = new Sequelize(
     process.env.DB_NAME,

@@ -1,3 +1,10 @@
+const path = require('path');
+
+// Forcefully load environment variables from the specific path of the .env file
+require('dotenv').config({
+  path: path.resolve(__dirname, '.env') // Forcefully specify the path to .env
+});
+
 const bcrypt = require('bcryptjs'); // Change to bcryptjs
 const jwt = require('jsonwebtoken');
 const { ValidationError } = require('sequelize');
@@ -11,8 +18,6 @@ const {
     getToken,
     sendErrorUnauthorized,
   } = require("../../utils/methods");
-
-require('dotenv').config();
 
 exports.createUser = async (req, res) => {
     const { 

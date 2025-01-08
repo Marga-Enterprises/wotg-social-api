@@ -1,20 +1,27 @@
-require('dotenv').config(); // Load environment variables
+const path = require('path');
+
+// Forcefully load environment variables from the specific path of the .env file
+require('dotenv').config({
+  path: path.resolve(__dirname, '.env') // Forcefully specify the path to .env
+});
+
+// Log the path where the .env file is being loaded from
+console.log('Loaded .env from path:', path.resolve(__dirname, '.env'));
+
+// Log all specific environment variables to ensure they are loaded correctly
+console.log('DB_HOST:', process.env.DB_HOST);  // Log specific environment variables
+console.log('DB_USER:', process.env.DB_USER);
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD);
+console.log('DB_NAME:', process.env.DB_NAME);
+console.log('PORT:', process.env.PORT);
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
+// Optionally log the entire process.env object for debugging
+console.log('PROCESS ENV:', JSON.stringify(process.env, null, 2));
 
 const express = require('express');
 const cors = require('cors');
-
-
-// Log all environment variables
-/*
-console.log('Environment Variables:', process.env.DB_HOST);
-console.log('Environment Variables:', process.env.DB_USER);
-console.log('Environment Variables:', process.env.DB_PASSWORD);
-console.log('Environment Variables:', process.env.DB_NAME);
-console.log('Environment Variables:', process.env.PORT);
-console.log('Environment Variables:', process.env.JWT_SECRET);
-console.log('Environment Variables:', process.env.NODE_ENV);
-*/
-console.log('PROCESS ENV', process.env);  // Log all environment variables
 
 const http = require('http'); // For wrapping Express with Socket.IO
 const { Server } = require('socket.io'); // Import Socket.IO
