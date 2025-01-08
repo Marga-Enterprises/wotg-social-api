@@ -12,6 +12,7 @@ console.log('Environment Variables:', process.env.DB_NAME);
 console.log('Environment Variables:', process.env.PORT);
 console.log('Environment Variables:', process.env.JWT_SECRET);
 console.log('Environment Variables:', process.env.NODE_ENV);
+console.log('PROCESS ENV', process.env);  // Log all environment variables
 
 const http = require('http'); // For wrapping Express with Socket.IO
 const { Server } = require('socket.io'); // Import Socket.IO
