@@ -4,6 +4,8 @@ const Subscription = require('../models/Subscription'); // Import Message model
 exports.subscribe = async (req, res) => {
     const { userId, subscription } = req.body;
 
+    console.log('REQQQQ', req.body);
+
     try {
         // Check if the user is already subscribed (optional, to prevent duplicate subscriptions)
         const existingSubscription = await Subscription.findOne({
