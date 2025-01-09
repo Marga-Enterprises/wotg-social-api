@@ -65,7 +65,10 @@ exports.sendMessage = async (req, res, io) => {
                 ],
             });
 
-            // Fetch the subscriptions for the sender's user (assuming users want notifications for messages)
+            if (io) {
+                io.to(chatroomId).emit('new_message', fullMessage);
+            }
+            
             const subscriptions = await Subscription.findAll();
 
             // Send notifications to all the users subscribed to this sender
@@ -87,11 +90,6 @@ exports.sendMessage = async (req, res, io) => {
 
             // Wait for all notifications to be sent
             await Promise.all(pushPromises);
-
-            // Emit the new message to the chatroom via Socket.IO
-            if (io) {
-                io.to(chatroomId).emit('new_message', fullMessage);
-            }
 
             return sendSuccess(res, fullMessage);
         } catch (error) {
