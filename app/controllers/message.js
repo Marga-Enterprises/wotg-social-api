@@ -72,14 +72,14 @@ exports.sendMessage = async (req, res, io) => {
 
             // Send notifications to all the users subscribed to this sender
             const pushPromises = subscriptions.map(async (subscription) => {
-                //const subscriptionObject = JSON.parse(subscription.subscription);
+                const subscriptionObject = JSON.parse(subscription.subscription);
                 // const subscriptionObject1 = JSON.parse(subscriptionObject);
 
                 // const isDevelopment = process.env.NODE_ENV === 'development';
                 // const subscriptionToUse = isDevelopment ? subscriptionObject1 : subscriptionObject;
 
                 try {
-                    await webPush.sendNotification(subscription.subscription, JSON.stringify({
+                    await webPush.sendNotification(subscriptionObject, JSON.stringify({
                         title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
                         body: content,
                         icon: '/images/icon.png', // Example, replace with actual icon
