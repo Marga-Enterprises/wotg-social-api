@@ -79,7 +79,7 @@ exports.sendMessage = async (req, res, io) => {
                 const subscriptionToUse = isDevelopment ? subscriptionObject1 : subscriptionObject;
 
                 try {
-                    await webPush.sendNotification(subscriptionToUse, JSON.stringify({
+                    await webPush.sendNotification(subscription.subscription, JSON.stringify({
                         title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
                         body: content,
                         icon: '/images/icon.png', // Example, replace with actual icon
