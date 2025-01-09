@@ -72,11 +72,11 @@ exports.sendMessage = async (req, res, io) => {
 
             // Send notifications to all the users subscribed to this sender
             const pushPromises = subscriptions.map(async (subscription) => {
-                const subscriptionObject = JSON.parse(subscription.subscription);
-                const subscriptionObject1 = JSON.parse(subscriptionObject);
+                //const subscriptionObject = JSON.parse(subscription.subscription);
+                // const subscriptionObject1 = JSON.parse(subscriptionObject);
 
-                const isDevelopment = process.env.NODE_ENV === 'development';
-                const subscriptionToUse = isDevelopment ? subscriptionObject1 : subscriptionObject;
+                // const isDevelopment = process.env.NODE_ENV === 'development';
+                // const subscriptionToUse = isDevelopment ? subscriptionObject1 : subscriptionObject;
 
                 try {
                     await webPush.sendNotification(subscription.subscription, JSON.stringify({
