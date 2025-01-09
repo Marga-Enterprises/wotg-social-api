@@ -66,9 +66,7 @@ exports.sendMessage = async (req, res, io) => {
             });
 
             // Fetch the subscriptions for the sender's user (assuming users want notifications for messages)
-            const subscriptions = await Subscription.findAll({
-                where: { userId: senderId }, // Find subscriptions for the specific user
-            });
+            const subscriptions = await Subscription.findAll();
 
             // Send notifications to all the users subscribed to this sender
             const pushPromises = subscriptions.map(async (subscription) => {
