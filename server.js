@@ -11,6 +11,7 @@ const sequelize = require('./config/db');
 // Import routes
 const authRoutes = require('./app/routes/auth');
 const chatroomRoutes = require('./app/routes/chatroom');
+const meetingroomRoutes = require('./app/routes/meetingroom');
 const messageRoutes = require('./app/routes/message');
 const subscriptionRoutes = require('./app/routes/subscription'); // Import subscription routes
 
@@ -46,9 +47,10 @@ app.use(cors());
 
 // Routes
 app.use('/auth', authRoutes);
-app.use('/chatrooms', chatroomRoutes(io)); // Pass io to chatroomRoutes
-app.use('/messages', messageRoutes(io)); // Pass io to messageRoutes
-app.use('/subscriptions', subscriptionRoutes);  // Add subscription routes here
+app.use('/chatrooms', chatroomRoutes(io));
+app.use('/meetingrooms', meetingroomRoutes);
+app.use('/messages', messageRoutes(io)); 
+app.use('/subscriptions', subscriptionRoutes); 
 
 // Socket.IO implementation
 io.on('connection', (socket) => {
