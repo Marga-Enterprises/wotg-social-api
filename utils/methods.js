@@ -1,3 +1,7 @@
+const path = require('path');
+
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
 const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
@@ -109,7 +113,7 @@ exports.getToken = (headers) => {
 
 exports.decodeToken = (token) => {
   if (token) {
-    const decoded = jwt.verify(token, secretKey);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     return decoded;
   }
 

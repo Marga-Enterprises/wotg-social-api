@@ -1,8 +1,8 @@
-// app/models/Participant.js
 const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../../config/db');
 const Meetingroom = require('./Meetingroom'); // Import Meetingroom model
 const Chatroom = require('./Chatroom'); // Import Chatroom model
+const User = require('./User'); // Import User model
 
 class Participant extends Model {}
 
@@ -57,5 +57,9 @@ Participant.belongsTo(Meetingroom, { foreignKey: 'meetingRoomId' });
 
 Chatroom.hasMany(Participant, { foreignKey: 'chatRoomId' });
 Participant.belongsTo(Chatroom, { foreignKey: 'chatRoomId' });
+
+// Relating Participant to User (one participant belongs to a user)
+User.hasMany(Participant, { foreignKey: 'userId' }); // A user can have many participants
+Participant.belongsTo(User, { foreignKey: 'userId', as: 'user' }); // Each participant belongs to a single user
 
 module.exports = Participant;
