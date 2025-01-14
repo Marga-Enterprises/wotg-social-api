@@ -1,6 +1,7 @@
 // controllers/chatroom.js
 const Chatroom = require('../models/Chatroom'); // Import Chatroom model
 const Participant = require('../models/Participant'); // Import Chatroom model
+const User = require('../models/User'); // Import Chatroom model
 
 const {
     sendError,
@@ -21,21 +22,47 @@ exports.setIO = (socketInstance) => {
 exports.getAllChatrooms = async (req, res) => {
     let token = getToken(req.headers);
     if (token) {
-        const userDecoded = decodeToken(token); // Assuming this function decodes the token and gets the user ID
+        const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
         try {
-            // Find all chatrooms where the user is a participant
+            // Step 1: Fetch all chatrooms where the logged-in user is a participant
             const chatrooms = await Chatroom.findAll({
                 include: [
                     {
                         model: Participant,
-                        where: { userId: userDecoded.user.id }, // Ensure that the user is a participant
-                        required: true, // Ensures the chatroom must have the user as a participant
+                        required: true, // Ensures the chatroom must include the logged-in user
+                        where: { userId: userDecoded.user.id }, // Filter by logged-in user
+                        attributes: [] // Exclude redundant data for filtering
                     }
                 ]
             });
 
-            // Return only the chatrooms that the user is a participant in
-            return sendSuccess(res, chatrooms);
+            // Step 2: Fetch all participants for all chatrooms
+            const chatroomIds = chatrooms.map(chatroom => chatroom.id); // Extract chatroom IDs
+            const participants = await Participant.findAll({
+                where: { chatRoomId: chatroomIds }, // Get participants for these chatrooms
+                include: [
+                    {
+                        model: User,
+                        as: 'user', // Alias for user relation
+                        attributes: ['id', 'user_fname', 'user_lname', 'email'] // Select relevant fields
+                    }
+                ],
+                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'] // Select necessary fields
+            });
+
+            // Step 3: Merge participants into their respective chatrooms
+            const chatroomsWithParticipants = chatrooms.map(chatroom => {
+                const chatroomParticipants = participants.filter(
+                    participant => participant.chatRoomId === chatroom.id
+                );
+                return {
+                    ...chatroom.toJSON(),
+                    Participants: chatroomParticipants
+                };
+            });
+
+            // Return the merged result
+            return sendSuccess(res, chatroomsWithParticipants);
         } catch (error) {
             console.error('Error fetching chatrooms:', error);
             res.status(500).json({ error: 'Failed to retrieve chatrooms.' });
@@ -44,6 +71,8 @@ exports.getAllChatrooms = async (req, res) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
+
 
 
 // Create a new chatroom
