@@ -1,7 +1,8 @@
 // controllers/chatroom.js
-const Chatroom = require('../models/Chatroom'); // Import Chatroom model
-const Participant = require('../models/Participant'); // Import Chatroom model
-const User = require('../models/User'); // Import Chatroom model
+const Chatroom = require('../models/Chatroom'); 
+const Participant = require('../models/Participant'); 
+const User = require('../models/User'); 
+const Message = require('../models/Message'); 
 
 const {
     sendError,
@@ -20,58 +21,81 @@ exports.setIO = (socketInstance) => {
 
 // Fetch all chatrooms
 exports.getAllChatrooms = async (req, res) => {
-    let token = getToken(req.headers);
-    if (token) {
-        const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
-        try {
-            // Step 1: Fetch all chatrooms where the logged-in user is a participant
-            const chatrooms = await Chatroom.findAll({
-                include: [
-                    {
-                        model: Participant,
-                        required: true, // Ensures the chatroom must include the logged-in user
-                        where: { userId: userDecoded.user.id }, // Filter by logged-in user
-                        attributes: [] // Exclude redundant data for filtering
-                    }
-                ]
-            });
+  let token = getToken(req.headers);
+  if (token) {
+    const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
+    try {
+      // Step 1: Fetch all chatrooms where the logged-in user is a participant
+      const chatrooms = await Chatroom.findAll({
+        include: [
+          {
+            model: Participant,
+            required: true, // Ensures the chatroom must include the logged-in user
+            where: { userId: userDecoded.user.id }, // Filter by logged-in user
+            attributes: [] // Exclude redundant data for filtering
+          },
+          {
+            model: Message, // Include the messages to fetch the latest message
+            as: 'messages', // Alias for the association
+            required: false, // Allow chatrooms with no messages
+            attributes: ['createdAt', 'content'], // Only select the createdAt field for ordering
+            order: [['createdAt', 'DESC']], // Correctly sort messages by most recent
+            limit: 1 // Only fetch the most recent message for each chatroom
+          }
+        ]
+      });
 
-            // Step 2: Fetch all participants for all chatrooms
-            const chatroomIds = chatrooms.map(chatroom => chatroom.id); // Extract chatroom IDs
-            const participants = await Participant.findAll({
-                where: { chatRoomId: chatroomIds }, // Get participants for these chatrooms
-                include: [
-                    {
-                        model: User,
-                        as: 'user', // Alias for user relation
-                        attributes: ['id', 'user_fname', 'user_lname', 'email'] // Select relevant fields
-                    }
-                ],
-                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'] // Select necessary fields
-            });
+      // Step 2: Fetch all participants for all chatrooms
+      const chatroomIds = chatrooms.map(chatroom => chatroom.id); // Extract chatroom IDs
+      const participants = await Participant.findAll({
+        where: { chatRoomId: chatroomIds }, // Get participants for these chatrooms
+        include: [
+          {
+            model: User,
+            as: 'user', // Alias for user relation
+            attributes: ['id', 'user_fname', 'user_lname', 'email'] // Select relevant fields
+          }
+        ],
+        attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'] // Select necessary fields
+      });
 
-            // Step 3: Merge participants into their respective chatrooms
-            const chatroomsWithParticipants = chatrooms.map(chatroom => {
-                const chatroomParticipants = participants.filter(
-                    participant => participant.chatRoomId === chatroom.id
-                );
-                return {
-                    ...chatroom.toJSON(),
-                    Participants: chatroomParticipants
-                };
-            });
+      // Step 3: Merge participants and the most recent message into their respective chatrooms
+      const chatroomsWithParticipants = chatrooms.map(chatroom => {
+        const chatroomParticipants = participants.filter(
+          participant => participant.chatRoomId === chatroom.id
+        );
 
-            // Return the merged result
-            return sendSuccess(res, chatroomsWithParticipants);
-        } catch (error) {
-            console.error('Error fetching chatrooms:', error);
-            res.status(500).json({ error: 'Failed to retrieve chatrooms.' });
-        }
-    } else {
-        return sendErrorUnauthorized(res, "", "Please login first.");
+        // Get the most recent message from the 'messages' field
+        const recentMessage = chatroom.messages ? chatroom.messages[0] : null;
+
+        return {
+          ...chatroom.toJSON(),
+          Participants: chatroomParticipants,
+          RecentMessage: recentMessage // Add the recent message to the response
+        };
+      });
+
+      // Step 4: Sort the chatrooms by the createdAt of the most recent message
+      chatroomsWithParticipants.sort((a, b) => {
+        // If there is no message for a chatroom, move it to the bottom
+        const dateA = a.RecentMessage ? new Date(a.RecentMessage.createdAt) : 0;
+        const dateB = b.RecentMessage ? new Date(b.RecentMessage.createdAt) : 0;
+        return dateB - dateA; // Sort in descending order
+      });
+
+      // Return the merged result with sorted chatrooms
+      return sendSuccess(res, chatroomsWithParticipants);
+    } catch (error) {
+      console.error('Error fetching chatrooms:', error);
+      res.status(500).json({ error: 'Failed to retrieve chatrooms.' });
     }
+  } else {
+    return sendErrorUnauthorized(res, "", "Please login first.");
+  }
 };
 
+  
+  
 
 
 
