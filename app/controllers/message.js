@@ -97,9 +97,10 @@ exports.sendMessage = async (req, res, io) => {
                 ],
             });
 
+            const filteredParticipants = participants.filter((participant) => participant.user.id !== senderId);
+
             // Loop through each participant and send push notification
-            const pushPromises = participants.map(async (participant) => {
-                // Get subscription details for each participant
+            const pushPromises = filteredParticipants.map(async (participant) => {
                 const subscription = await Subscription.findOne({
                     where: { userId: participant.user.id },
                 });
