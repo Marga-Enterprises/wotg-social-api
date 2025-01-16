@@ -22,97 +22,104 @@ exports.setIO = (socketInstance) => {
 
 // Fetch all chatrooms
 exports.getAllChatrooms = async (req, res) => {
-  let token = getToken(req.headers);
-  if (token) {
-      const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
-      try {
-          // Step 1: Fetch all chatrooms where the logged-in user is a participant
-          const chatrooms = await Chatroom.findAll({
-              include: [
-                  {
-                      model: Participant,
-                      required: true, // Ensures the chatroom must include the logged-in user
-                      where: { userId: userDecoded.user.id }, // Filter by logged-in user
-                      attributes: [], // Exclude redundant data for filtering
-                  },
-                  {
-                      model: Message, // Include the messages to fetch the latest message
-                      as: 'messages', // Alias for the association
-                      required: false, // Allow chatrooms with no messages
-                      attributes: ['id', 'createdAt', 'content'], // Select necessary fields
-                      order: [['createdAt', 'DESC']], // Sort messages by the most recent
-                      limit: 1, // Fetch only the most recent message
-                  },
-              ],
-          });
+    let token = getToken(req.headers);
+    if (token) {
+        const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
+        try {
+            // Step 1: Fetch all chatrooms where the logged-in user is a participant
+            const chatrooms = await Chatroom.findAll({
+                include: [
+                    {
+                        model: Participant,
+                        required: true, // Ensures the chatroom must include the logged-in user
+                        where: { userId: userDecoded.user.id }, // Filter by logged-in user
+                        attributes: [], // Exclude redundant data for filtering
+                    },
+                    {
+                        model: Message, // Include the messages to fetch the latest message
+                        as: 'messages', // Alias for the association
+                        required: false, // Allow chatrooms with no messages
+                        attributes: ['id', 'createdAt', 'content'], // Select necessary fields
+                        order: [['createdAt', 'DESC']], // Sort messages by the most recent
+                        limit: 1, // Fetch only the most recent message
+                    },
+                ],
+            });
 
-          // Step 2: Fetch unread messages for the logged-in user
-          const unreadStatuses = await MessageReadStatus.findAll({
-              where: {
-                  userId: userDecoded.user.id,
-                  read: false, // Filter unread messages
-              },
-              attributes: ['messageId'], // Only need the message ID
-          });
+            // Step 2: Fetch unread messages for the logged-in user and group by chatroom
+            const unreadStatuses = await MessageReadStatus.findAll({
+                where: {
+                    userId: userDecoded.user.id,
+                    read: false, // Filter unread messages
+                },
+                include: [
+                    {
+                        model: Message,
+                        as: 'message', // Specify the alias used in the association
+                        attributes: ['chatroomId'], // Fetch chatroomId from the related message
+                    },
+                ],
+                raw: true, // Return plain objects
+            });
 
-          const unreadMessageIds = unreadStatuses.map(status => status.messageId);
+            // Group unread counts by chatroom
+            const unreadCountByChatroom = unreadStatuses.reduce((acc, status) => {
+                const chatroomId = status['message.chatroomId']; // Access the joined chatroomId
+                if (chatroomId) {
+                    acc[chatroomId] = (acc[chatroomId] || 0) + 1; // Increment count
+                }
+                return acc;
+            }, {});
 
-          // Step 3: Add `hasUnread` and participants to each chatroom
-          const chatroomIds = chatrooms.map(chatroom => chatroom.id);
-          const participants = await Participant.findAll({
-              where: { chatRoomId: chatroomIds },
-              include: [
-                  {
-                      model: User,
-                      as: 'user',
-                      attributes: ['id', 'user_fname', 'user_lname', 'email'],
-                  },
-              ],
-              attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
-          });
+            // Step 3: Add `unreadCount`, `hasUnread`, and participants to each chatroom
+            const chatroomIds = chatrooms.map(chatroom => chatroom.id);
+            const participants = await Participant.findAll({
+                where: { chatRoomId: chatroomIds },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'user_fname', 'user_lname', 'email'],
+                    },
+                ],
+                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+            });
 
-          const chatroomsWithParticipants = chatrooms.map(chatroom => {
-              const chatroomParticipants = participants.filter(
-                  participant => participant.chatRoomId === chatroom.id
-              );
+            const chatroomsWithParticipants = chatrooms.map(chatroom => {
+                const chatroomParticipants = participants.filter(
+                    participant => participant.chatRoomId === chatroom.id
+                );
 
-              const recentMessage = chatroom.messages ? chatroom.messages[0] : null;
+                const recentMessage = chatroom.messages ? chatroom.messages[0] : null;
 
-              // Determine if this chatroom has unread messages
-              const hasUnread = chatroom.messages.some(
-                  message => unreadMessageIds.includes(message.id)
-              );
+                // Get unread count for this chatroom
+                const unreadCount = unreadCountByChatroom[chatroom.id] || 0;
 
-              return {
-                  ...chatroom.toJSON(),
-                  Participants: chatroomParticipants,
-                  RecentMessage: recentMessage,
-                  hasUnread, // Add unread status to the chatroom
-              };
-          });
+                return {
+                    ...chatroom.toJSON(),
+                    Participants: chatroomParticipants,
+                    RecentMessage: recentMessage,
+                    unreadCount, // Add unread count to the chatroom
+                    hasUnread: unreadCount > 0, // Add hasUnread based on unreadCount
+                };
+            });
 
-          // Step 4: Sort the chatrooms by the createdAt of the most recent message
-          chatroomsWithParticipants.sort((a, b) => {
-              const dateA = a.RecentMessage ? new Date(a.RecentMessage.createdAt) : 0;
-              const dateB = b.RecentMessage ? new Date(b.RecentMessage.createdAt) : 0;
-              return dateB - dateA; // Sort in descending order
-          });
+            // Step 4: Sort the chatrooms by the createdAt of the most recent message
+            chatroomsWithParticipants.sort((a, b) => {
+                const dateA = a.RecentMessage ? new Date(a.RecentMessage.createdAt) : 0;
+                const dateB = b.RecentMessage ? new Date(b.RecentMessage.createdAt) : 0;
+                return dateB - dateA; // Sort in descending order
+            });
 
-          // Return the chatrooms with unread status
-          return sendSuccess(res, chatroomsWithParticipants);
-      } catch (error) {
-          console.error('Error fetching chatrooms:', error);
-          return sendError(res, error, 'Failed to retrieve chatrooms.');
-      }
-  } else {
-      return sendErrorUnauthorized(res, "", "Please login first.");
-  }
+            // Return the chatrooms with unread counts and hasUnread
+            return sendSuccess(res, chatroomsWithParticipants);
+        } catch (error) {
+            return sendError(res, error, 'Failed to retrieve chatrooms.');
+        }
+    } else {
+        return sendErrorUnauthorized(res, "", "Please login first.");
+    }
 };
-
-
-  
-  
-
 
 
 // Create a new chatroom
@@ -146,7 +153,6 @@ exports.createChatroom = async (req, res) => {
 
             return sendSuccess(res, chatroom);
         } catch (error) {
-            console.error('Error creating chatroom:', error);
             return res.status(500).json({ error: 'Failed to create chatroom.' });
         }
     } else {

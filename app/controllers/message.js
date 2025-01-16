@@ -44,12 +44,13 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                 order: [['createdAt', 'ASC']], // Order messages by createdAt in ascending order
             });
 
-            // Update unread messages for this user to "read"
+            // Identify unread messages for the user
             const unreadMessageIds = messages
                 .filter(message => message.sender.id !== userDecoded.user.id) // Ignore messages sent by the user
                 .map(message => message.id);
 
             if (unreadMessageIds.length > 0) {
+                // Update unread messages to "read"
                 await MessageReadStatus.update(
                     { read: true },
                     {
@@ -61,7 +62,36 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                     }
                 );
 
-                // Emit a real-time event to notify about read updates
+                // Emit real-time updates to other participants
+                const participants = await Participant.findAll({
+                    where: { chatRoomId: chatroomId },
+                    attributes: ['userId'],
+                });
+
+                participants.forEach(async participant => {
+                    const unreadCount = await MessageReadStatus.count({
+                        where: {
+                            userId: participant.userId,
+                            read: false,
+                        },
+                        include: [
+                            {
+                                model: Message,
+                                as: 'message',
+                                attributes: [],
+                                where: { chatroomId },
+                            },
+                        ],
+                    });
+
+                    // Emit the updated unread count for each participant
+                    io.to(`user_${participant.userId}`).emit('unread_update', {
+                        chatroomId,
+                        unreadCount,
+                    });
+                });
+
+                // Emit a real-time event to notify this user about marked-as-read messages
                 io.to(chatroomId).emit('message_read', {
                     userId: userDecoded.user.id,
                     messageIds: unreadMessageIds,
@@ -77,6 +107,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
 
 
 
@@ -137,6 +168,31 @@ exports.sendMessage = async (req, res, io) => {
             // Ensure all read statuses are created
             await Promise.all(readStatusPromises);
 
+            // Emit unread count updates to participants
+            for (const participant of filteredParticipants) {
+                // Get the count of unread messages for this participant in the chatroom
+                const unreadCount = await MessageReadStatus.count({
+                    where: {
+                        userId: participant.user.id,
+                        read: false,
+                    },
+                    include: [
+                        {
+                            model: Message,
+                            as: 'message',
+                            attributes: [],
+                            where: { chatroomId },
+                        },
+                    ],
+                });
+
+                // Emit the updated unread count
+                io.to(`user_${participant.user.id}`).emit('unread_update', {
+                    chatroomId,
+                    unreadCount,
+                });
+            }
+
             // Loop through each participant and send push notification
             const pushPromises = filteredParticipants.map(async (participant) => {
                 const subscription = await Subscription.findOne({
@@ -172,6 +228,7 @@ exports.sendMessage = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
 
 
 
