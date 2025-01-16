@@ -11,10 +11,10 @@ const sequelize = require('./config/db');
 // Import routes
 const authRoutes = require('./app/routes/auth');
 const chatroomRoutes = require('./app/routes/chatroom');
-const meetingroomRoutes = require('./app/routes/meetingroom');
 const messageRoutes = require('./app/routes/message');
 const subscriptionRoutes = require('./app/routes/subscription');
 const userRoutes = require('./app/routes/user');
+const meetingroomRoutes = require('./app/routes/meetingroom');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -50,8 +50,8 @@ app.use(cors());
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/chatrooms', chatroomRoutes(io));
-app.use('/meetingrooms', meetingroomRoutes);
 app.use('/messages', messageRoutes(io)); 
+app.use('/meetingrooms', meetingroomRoutes(io));
 app.use('/subscriptions', subscriptionRoutes); 
 
 // Socket.IO implementation
