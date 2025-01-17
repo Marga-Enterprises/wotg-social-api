@@ -13,12 +13,14 @@ const {
     decodeToken
 } = require("../../utils/methods");
 
+/*
 let io; // Global variable to hold the Socket.IO instance
 
 // Method to set `io`
 exports.setIO = (socketInstance) => {
     io = socketInstance;
 };
+*/
 
 // Fetch all chatrooms
 exports.getAllChatrooms = async (req, res) => {
@@ -123,7 +125,8 @@ exports.getAllChatrooms = async (req, res) => {
 
 
 // Create a new chatroom
-exports.createChatroom = async (req, res) => {
+// Create a new chatroom
+exports.createChatroom = async (req, res, io) => {
     let token = getToken(req.headers);
     if (token) {
         const { name, type, participants } = req.body; // Get name, type, and participants from the request body
@@ -139,25 +142,53 @@ exports.createChatroom = async (req, res) => {
 
             // Create participants for the chatroom
             const participantsData = participants.map((userId) => ({
-                userId, 
+                userId,
                 chatRoomId: chatroom.id,  // Link the participant to the newly created chatroom
             }));
 
             // Insert participants into the Participant model
             await Participant.bulkCreate(participantsData);
 
+            // Fetch participants' user details to include in the response
+            const chatroomParticipants = await Participant.findAll({
+                where: { chatRoomId: chatroom.id },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'user_fname', 'user_lname', 'email'],
+                    },
+                ],
+                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+            });
+
+            // Prepare the chatroom data with participants to be returned
+            const chatroomWithParticipants = {
+                id: chatroom.id,
+                name: chatroom.name,
+                type: chatroom.type,
+                createdAt: chatroom.createdAt,
+                updatedAt: chatroom.updatedAt,
+                messages: [], // No messages yet for the newly created chatroom
+                Participants: chatroomParticipants,
+                unreadCount: 0, // Initially, no unread messages
+                hasUnread: false, // No unread messages
+            };
+
             // Emit a real-time event for the new chatroom with participants
             if (io) {
-                io.emit('new_chatroom', { chatroom, participants });
+                io.emit('new_chatroom', chatroomWithParticipants);
             }
 
-            return sendSuccess(res, chatroom);
+            // Return the success response using sendSuccess, chatroom data will be passed directly
+            return sendSuccess(res, chatroomWithParticipants); // Automatically handles the JSON response
         } catch (error) {
-            return res.status(500).json({ error: 'Failed to create chatroom.' });
+            return sendError(res, error, 'Failed to create chatroom.');
         }
     } else {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
 
 

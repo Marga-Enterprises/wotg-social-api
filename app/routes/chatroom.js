@@ -6,9 +6,7 @@ module.exports = (io) => {
 
     // Fetch all chatrooms
     router.get('/', chatroomController.getAllChatrooms);
-
-    // Create a new chatroom
-    router.post('/', chatroomController.createChatroom); 
+    router.post('/', (req, res) => chatroomController.createChatroom(req, res, io));
 
     return router;
 };
