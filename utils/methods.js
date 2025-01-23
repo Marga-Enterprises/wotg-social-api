@@ -34,12 +34,13 @@ const randomAuthor = () => {
 exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = '') => {
   // console.log('COLLECTION', collection);
 
+  /*
   console.log("[(x_-) SEND ERROR collection] ", collection);
   console.log("[(x_-) SEND ERROR code] ", code);
   console.log("[(x_-) SEND ERROR data] ", data);
   console.log("[(x_-) SEND ERROR msg] ", msg);
 
-  let errorMessage = msg;
+  
 
   // Check if MongoDB unique constraint violation (code 11000) occurred
   if (data && data.code === 11000) {
@@ -52,15 +53,16 @@ exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = ''
       errorMessage = "Existing field already exists";
     }
   }
+  */
 
   return v.status(errNo).json({
     author: randomAuthor(),
-    msg: errorMessage,
+    msg,
     data,
     success: false,
     version: "0.0.1",
     code,
-    collection, // Include the collection name in the response
+    // collection, // Include the collection name in the response
   });
 };
 

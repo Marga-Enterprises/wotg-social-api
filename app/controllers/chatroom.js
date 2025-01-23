@@ -13,6 +13,8 @@ const {
     decodeToken
 } = require("../../utils/methods");
 
+const sequelize = require('../../config/db');
+
 /*
 let io; // Global variable to hold the Socket.IO instance
 
@@ -27,6 +29,8 @@ exports.getAllChatrooms = async (req, res) => {
     let token = getToken(req.headers);
     if (token) {
         const userDecoded = decodeToken(token); // Decode the token and retrieve the user ID
+        const { search } = req.query; // Extract search query parameter
+
         try {
             // Step 1: Fetch all chatrooms where the logged-in user is a participant
             const chatrooms = await Chatroom.findAll({
@@ -87,7 +91,7 @@ exports.getAllChatrooms = async (req, res) => {
                 attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
             });
 
-            const chatroomsWithParticipants = chatrooms.map(chatroom => {
+            let chatroomsWithParticipants = chatrooms.map(chatroom => {
                 const chatroomParticipants = participants.filter(
                     participant => participant.chatRoomId === chatroom.id
                 );
@@ -106,7 +110,42 @@ exports.getAllChatrooms = async (req, res) => {
                 };
             });
 
-            // Step 4: Sort the chatrooms by the createdAt of the most recent message
+            // Step 4: Apply search filtering (if a search term is provided)
+            if (search) {
+                const lowerSearch = search.toLowerCase();
+            
+                // Filter chatrooms based on search criteria
+                chatroomsWithParticipants = chatroomsWithParticipants.filter(chatroom => {
+                    // Check if the chatroom name matches the search term
+                    const chatroomNameMatches = chatroom.name.toLowerCase().includes(lowerSearch);
+            
+                    // Check if any participant's name matches the search term
+                    const participantNameMatches = chatroom.Participants.some(participant => {
+                        const fullName = `${participant.user.user_fname} ${participant.user.user_lname}`.toLowerCase();
+                        return fullName.includes(lowerSearch);
+                    });
+            
+                    return chatroomNameMatches || participantNameMatches;
+                });
+            
+                // Sort the filtered chatrooms:
+                // 1. Private conversations at the top
+                // 2. Group chatrooms afterward
+                // 3. Further sort by the most recent message within each type
+                chatroomsWithParticipants.sort((a, b) => {
+                    // Private chatrooms come first
+                    if (a.type === "private" && b.type === "group") return -1;
+                    if (a.type === "group" && b.type === "private") return 1;
+            
+                    // Sort by the most recent message within the same type
+                    const dateA = a.RecentMessage ? new Date(a.RecentMessage.createdAt) : 0;
+                    const dateB = b.RecentMessage ? new Date(b.RecentMessage.createdAt) : 0;
+                    return dateB - dateA;
+                });
+            }
+            
+
+            // Step 5: Sort the chatrooms by the createdAt of the most recent message
             chatroomsWithParticipants.sort((a, b) => {
                 const dateA = a.RecentMessage ? new Date(a.RecentMessage.createdAt) : 0;
                 const dateB = b.RecentMessage ? new Date(b.RecentMessage.createdAt) : 0;
@@ -124,6 +163,7 @@ exports.getAllChatrooms = async (req, res) => {
 };
 
 
+
 // Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
     let token = getToken(req.headers);
@@ -131,16 +171,54 @@ exports.createChatroom = async (req, res, io) => {
         const { name, participants } = req.body; // Get name, type, and participants from the request body
 
         // Validate the participants
-        if (!Array.isArray(participants) || participants.length === 0) {
-            return res.status(400).json({ error: "At least one participant is required." });
+        if (!Array.isArray(participants) || participants.length <= 1) {
+            return sendError(res, null, "At least two participant is required.");
         }
 
         try {
+            let chatroomName = name;
+
+            // Check if participants are exactly 2
+            if (participants.length === 2) {
+                const existingChatroom = await Participant.findAll({
+                    where: { userId: participants }, // Filter participants matching the provided IDs
+                    attributes: ['chatRoomId'], // Only select the chatRoomId
+                    include: [
+                        {
+                            model: Chatroom, // Join with the Chatroom model
+                            attributes: [], // Exclude Chatroom fields from the result
+                            where: { type: 'private' }, // Only include private chatrooms
+                        },
+                    ],
+                    group: ['chatRoomId'], // Group by chatRoomId
+                    having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure exactly 2 participants in the same chatroom
+                });
+                                       
+                
+                console.log('[[[[[[[[[[[[[[existingChatroom]]]]]]]]]]]]]]', existingChatroom);
+
+                if (existingChatroom.length > 0) {
+                    // Return an error if a chatroom already exists for these participants
+                    return sendError(res, null, "A chatroom already exists for these participants.");
+                }
+
+                // Fetch user details to construct the chatroom name
+                const users = await User.findAll({
+                    where: { id: participants },
+                    attributes: ['user_fname', 'user_lname'], // Only select the required fields
+                });
+
+                // Construct the chatroom name using the participants' full names
+                chatroomName = users
+                    .map((user) => `${user.user_fname} ${user.user_lname}`)
+                    .join(', ');
+            }
+
             // Determine chatroom type based on the number of participants
             const chatroomType = participants.length <= 2 ? "private" : "group";
 
-            // Create a new chatroom with the determined type
-            const chatroom = await Chatroom.create({ name, type: chatroomType });
+            // Create a new chatroom with the determined type and name
+            const chatroom = await Chatroom.create({ name: chatroomName, type: chatroomType });
 
             // Create participants for the chatroom
             const participantsData = participants.map((userId) => ({
@@ -191,6 +269,8 @@ exports.createChatroom = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
+
 
 
 
