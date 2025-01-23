@@ -1,4 +1,5 @@
 const path = require('path');
+const sequelize = require('../../config/db');
 
 // Forcefully load environment variables from the specific path of the .env file
 require('dotenv').config({
@@ -9,6 +10,8 @@ const bcrypt = require('bcryptjs'); // Change to bcryptjs
 const jwt = require('jsonwebtoken');
 const { ValidationError } = require('sequelize');
 const User = require('../models/User'); // Import your User model
+const Chatroom = require('../models/Chatroom'); 
+const Participant = require('../models/Participant'); 
 const validator = require('validator'); // Import the validator library for email validation
 
 const {
@@ -17,7 +20,79 @@ const {
     convertMomentWithFormat,
     getToken,
     sendErrorUnauthorized,
-  } = require("../../utils/methods");
+} = require("../../utils/methods");
+
+exports.loginUser = async (req, res) => {
+    const { email, password } = req.body;
+  
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+  
+    try {
+      // Find user by email
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        return sendErrorUnauthorized(res, '', 'User not found.');
+      }
+  
+      // Check if the password matches
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return sendErrorUnauthorized(res, '', 'Password Incorrect.');
+      }
+  
+      // Skip creating a room for the wotgadmin user
+      if (email !== 'wotgadmin@wotgonline.com') {
+        // Get the admin user by email
+        const adminUser = await User.findOne({ where: { email: 'wotgadmin@wotgonline.com' } });
+        if (!adminUser) {
+          return res.status(500).json({ error: 'Admin user not found. Please contact support.' });
+        }
+  
+        // Check if a chatroom already exists for the logged-in user and admin
+        const existingChatroom = await Participant.findAll({
+          where: { userId: [user.id, adminUser.id] },
+          attributes: ['chatRoomId'],
+          group: ['chatRoomId'],
+          having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure both participants are present
+        });
+  
+        if (existingChatroom.length === 0) {
+          // Create a new private chatroom
+          const chatroom = await Chatroom.create({ name: 'Private Chat', type: 'private' });
+  
+          // Add participants to the chatroom
+          await Participant.bulkCreate([
+            { userId: user.id, chatRoomId: chatroom.id },
+            { userId: adminUser.id, chatRoomId: chatroom.id },
+          ]);
+        }
+      }
+  
+      // Generate JWT token
+      const token = jwt.sign(
+        {
+          user: {
+            id: user.id,
+            user_role: user.user_role,
+            user_fname: user.user_fname,
+            user_lname: user.user_lname,
+            email: user.email,
+          },
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '1y' }
+      );
+  
+      // Send the response with user details and token
+      return sendSuccess(res, { token });
+    } catch (err) {
+      console.error('Sequelize error:', err);
+      res.status(500).json({ error: 'Internal server error.' });
+    }
+  };
 
 exports.createUser = async (req, res) => {
     const { 
@@ -86,49 +161,3 @@ exports.createUser = async (req, res) => {
 };
 
 
-
-exports.loginUser = async (req, res) => {
-    const { email, password } = req.body;
-
-    // Validate required fields
-    if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required.' });
-    }
-
-    try {
-        // Find user by email
-        const user = await User.findOne({ where: { email } });
-        if (!user) {
-            // return res.status(401).json({ error: 'Invalid email or password.' });
-            return sendErrorUnauthorized(res, '', 'User not found.');
-        }
-
-        // Check if the password matches
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            return sendErrorUnauthorized(res, '', 'Password Incorrect.');
-        }
-
-        // Generate JWT token (optional)
-        const token = jwt.sign(
-            {
-              user: {
-                id: user.id,
-                user_role: user.user_role,
-                user_fname: user.user_fname,
-                user_lname: user.user_lname,
-                email: user.email
-              }
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '1y' }
-          );
-          
-
-        // Send the response with user details and token
-        return sendSuccess(res, { token });
-    } catch (err) {
-        console.error('Sequelize error:', err);
-        res.status(500).json({ error: 'Internal server error.' });
-    }
-};
