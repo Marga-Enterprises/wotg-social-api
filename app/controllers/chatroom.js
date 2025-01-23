@@ -125,11 +125,10 @@ exports.getAllChatrooms = async (req, res) => {
 
 
 // Create a new chatroom
-// Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
     let token = getToken(req.headers);
     if (token) {
-        const { name, type, participants } = req.body; // Get name, type, and participants from the request body
+        const { name, participants } = req.body; // Get name, type, and participants from the request body
 
         // Validate the participants
         if (!Array.isArray(participants) || participants.length === 0) {
@@ -137,13 +136,16 @@ exports.createChatroom = async (req, res, io) => {
         }
 
         try {
-            // Create a new chatroom
-            const chatroom = await Chatroom.create({ name, type });
+            // Determine chatroom type based on the number of participants
+            const chatroomType = participants.length <= 2 ? "private" : "group";
+
+            // Create a new chatroom with the determined type
+            const chatroom = await Chatroom.create({ name, type: chatroomType });
 
             // Create participants for the chatroom
             const participantsData = participants.map((userId) => ({
                 userId,
-                chatRoomId: chatroom.id,  // Link the participant to the newly created chatroom
+                chatRoomId: chatroom.id, // Link the participant to the newly created chatroom
             }));
 
             // Insert participants into the Participant model
@@ -166,7 +168,7 @@ exports.createChatroom = async (req, res, io) => {
             const chatroomWithParticipants = {
                 id: chatroom.id,
                 name: chatroom.name,
-                type: chatroom.type,
+                type: chatroomType, // Use the dynamically determined type
                 createdAt: chatroom.createdAt,
                 updatedAt: chatroom.updatedAt,
                 messages: [], // No messages yet for the newly created chatroom
@@ -189,6 +191,7 @@ exports.createChatroom = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
+
 
 
 
