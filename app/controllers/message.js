@@ -1,4 +1,5 @@
 const Message = require('../models/Message'); // Import Message model
+const Chatroom = require('../models/Chatroom'); // Import Message model
 const Subscription = require('../models/Subscription'); // Import Message model
 const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
@@ -13,7 +14,6 @@ const {
     decodeToken
 } = require("../../utils/methods");
 
-// Fetch messages by chatroom ID
 exports.getMessagesByChatroom = async (req, res, io) => {
     let token = getToken(req.headers); // Get token from request headers
     if (token) {
@@ -29,6 +29,28 @@ exports.getMessagesByChatroom = async (req, res, io) => {
 
             if (!participant) {
                 return sendErrorUnauthorized(res, "", "You are not a participant of this chatroom.");
+            }
+
+            // Fetch the chatroom details
+            const chatroom = await Chatroom.findOne({
+                where: { id: chatroomId },
+                include: [
+                    {
+                        model: Participant,
+                        as: 'Participants',
+                        include: [
+                            {
+                                model: User,
+                                as: 'user',
+                                attributes: ['id', 'user_fname', 'user_lname'],
+                            },
+                        ],
+                    },
+                ],
+            });
+
+            if (!chatroom) {
+                return sendError(res, null, "Chatroom not found.");
             }
 
             // Fetch messages from the chatroom
@@ -98,7 +120,10 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                 });
             }
 
-            return sendSuccess(res, messages); // Return success with messages
+            return sendSuccess(res, {
+                chatroom, // Include chatroom details
+                messages, // Include messages
+            });
         } catch (error) {
             console.error('Error fetching messages:', error);
             return sendError(res, error, 'Failed to retrieve messages.');
@@ -107,7 +132,6 @@ exports.getMessagesByChatroom = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
-
 
 
 

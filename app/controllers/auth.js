@@ -58,17 +58,21 @@ exports.loginUser = async (req, res) => {
           group: ['chatRoomId'],
           having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure both participants are present
         });
-  
+
         if (existingChatroom.length === 0) {
-          // Create a new private chatroom
-          const chatroom = await Chatroom.create({ name: 'Private Chat', type: 'private' });
-  
-          // Add participants to the chatroom
-          await Participant.bulkCreate([
-            { userId: user.id, chatRoomId: chatroom.id },
-            { userId: adminUser.id, chatRoomId: chatroom.id },
-          ]);
+            // Concatenate names for the chatroom name
+            const chatroomName = `${adminUser.user_fname} ${adminUser.user_lname}, ${user.user_fname} ${user.user_lname}`;
+        
+            // Create a new private chatroom with concatenated names
+            const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
+        
+            // Add participants to the chatroom
+            await Participant.bulkCreate([
+                { userId: user.id, chatRoomId: chatroom.id },
+                { userId: adminUser.id, chatRoomId: chatroom.id },
+            ]);
         }
+      
       }
   
       // Generate JWT token
@@ -92,7 +96,7 @@ exports.loginUser = async (req, res) => {
       console.error('Sequelize error:', err);
       res.status(500).json({ error: 'Internal server error.' });
     }
-  };
+};
 
 exports.createUser = async (req, res) => {
     const { 
