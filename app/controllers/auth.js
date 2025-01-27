@@ -48,7 +48,8 @@ exports.loginUser = async (req, res) => {
         // Get the admin user by email
         const adminUser = await User.findOne({ where: { email: 'wotgadmin@wotgonline.com' } });
         if (!adminUser) {
-          return res.status(500).json({ error: 'Admin user not found. Please contact support.' });
+          // return res.status(500).json({ error: 'Admin user not found. Please contact support.' });
+          return sendError(res, '', 'Admin user not found. Please contact support.');
         }
   
         // Check if a chatroom already exists for the logged-in user and admin
