@@ -53,6 +53,7 @@ app.use('/chatrooms', chatroomRoutes(io));
 app.use('/messages', messageRoutes(io)); 
 app.use('/meetingrooms', meetingroomRoutes(io));
 app.use('/subscriptions', subscriptionRoutes); 
+app.use('/uploads', express.static('uploads'));
 
 // Socket.IO implementation
 io.on('connection', (socket) => {
