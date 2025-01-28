@@ -5,6 +5,7 @@ const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
 const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
+const upload = require('./upload');
 
 const {
     sendError,
@@ -138,16 +139,33 @@ exports.getMessagesByChatroom = async (req, res, io) => {
 
 // Save a new message and broadcast it
 exports.sendMessage = async (req, res, io) => {
-    let token = getToken(req.headers);
-    if (token) {
-        const { content, senderId, chatroomId } = req.body;
+    // Use the multer middleware for handling file uploads
+    upload.single('file')(req, res, async (err) => {
+        if (err) {
+            console.error('File upload error:', err);
+            return sendError(res, err, 'Failed to upload file.', 500);
+        }
+
+        const token = getToken(req.headers);
+        if (!token) {
+            return sendErrorUnauthorized(res, '', 'Please login first.');
+        }
+
+        const { senderId, chatroomId } = req.body;
+
+        // Check if a file was uploaded
+        const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
         try {
-            // Save the new message
+            // If a file is uploaded, use the file URL as the content
+            const content = fileUrl || req.body.content;
+
+            // Save the new message with or without file URL
             const message = await Message.create({
                 content,
                 senderId,
                 chatroomId,
+                fileUrl, // Save file URL if present
             });
 
             // Fetch the message with sender details to return in the response
@@ -166,7 +184,7 @@ exports.sendMessage = async (req, res, io) => {
                 io.to(chatroomId).emit('new_message', fullMessage);
             }
 
-            // Get participants of the chatroom
+            // Process the participants and handle unread status, notifications, etc. (no changes needed here)
             const participants = await Participant.findAll({
                 where: { chatRoomId: chatroomId },
                 include: [
@@ -178,23 +196,21 @@ exports.sendMessage = async (req, res, io) => {
                 ],
             });
 
-            const filteredParticipants = participants.filter((participant) => participant.user.id !== senderId);
+            const filteredParticipants = participants.filter(
+                (participant) => participant.user.id !== senderId
+            );
 
-            // Create "unread" message status for all participants except sender
-            const readStatusPromises = filteredParticipants.map((participant) => {
-                return MessageReadStatus.create({
+            const readStatusPromises = filteredParticipants.map((participant) =>
+                MessageReadStatus.create({
                     messageId: message.id,
                     userId: participant.user.id,
                     read: false, // Default to "unread"
-                });
-            });
+                })
+            );
 
-            // Ensure all read statuses are created
             await Promise.all(readStatusPromises);
 
-            // Emit unread count updates to participants
             for (const participant of filteredParticipants) {
-                // Get the count of unread messages for this participant in the chatroom
                 const unreadCount = await MessageReadStatus.count({
                     where: {
                         userId: participant.user.id,
@@ -210,14 +226,12 @@ exports.sendMessage = async (req, res, io) => {
                     ],
                 });
 
-                // Emit the updated unread count
                 io.to(`user_${participant.user.id}`).emit('unread_update', {
                     chatroomId,
                     unreadCount,
                 });
             }
 
-            // Loop through each participant and send push notification
             const pushPromises = filteredParticipants.map(async (participant) => {
                 const subscription = await Subscription.findOne({
                     where: { userId: participant.user.id },
@@ -225,14 +239,11 @@ exports.sendMessage = async (req, res, io) => {
 
                 if (subscription) {
                     const subscriptionObject = JSON.parse(subscription.subscription);
-                    const isDevelopment = process.env.NODE_ENV === 'development';
-                    const subscriptionToUse = isDevelopment ? JSON.parse(subscriptionObject) : subscriptionObject;
-
                     try {
-                        // Send notification to each user with valid subscription
-                        await webPush.sendNotification(subscriptionToUse, JSON.stringify({
+                        await webPush.sendNotification(subscriptionObject, JSON.stringify({
                             title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
                             body: content,
+                            file: fileUrl, // Include file link in the notification if present
                         }));
                     } catch (error) {
                         console.error('Error sending push notification:', error);
@@ -240,7 +251,6 @@ exports.sendMessage = async (req, res, io) => {
                 }
             });
 
-            // Wait for all notifications to be sent
             await Promise.all(pushPromises);
 
             return sendSuccess(res, fullMessage);
@@ -248,10 +258,9 @@ exports.sendMessage = async (req, res, io) => {
             console.error('Error sending message:', error);
             return sendError(res, error, 'Failed to send message.', 500);
         }
-    } else {
-        return sendErrorUnauthorized(res, "", "Please login first.");
-    }
+    });
 };
+
 
 
 
