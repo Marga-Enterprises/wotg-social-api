@@ -2,32 +2,35 @@ const Subscription = require('../models/Subscription'); // Import Message model
 
 // Subscribe User to Push Notifications
 exports.subscribe = async (req, res) => {
-    const { userId, subscription } = req.body;
-
-    console.log('REQQQQ', req.body);
+    const { userId, deviceId, subscription } = req.body;
 
     try {
-        // Check if the user is already subscribed (optional, to prevent duplicate subscriptions)
+        // Check if the device is already subscribed
         const existingSubscription = await Subscription.findOne({
-            where: { userId: userId },
+            where: { userId, deviceId },
         });
 
         if (existingSubscription) {
-            return res.status(400).json({ message: 'User is already subscribed.' });
+            return res.status(400).json({ message: 'This device is already subscribed.' });
         }
 
-        // Save the subscription details in the database
+        // Create a new subscription for the device
         const newSubscription = await Subscription.create({
             userId,
-            subscription: JSON.stringify(subscription), // Store subscription as JSON string
+            deviceId,
+            subscription,
         });
 
-        return res.status(200).json({ message: 'User subscribed successfully!' });
+        return res.status(200).json({
+            message: 'Device subscribed successfully!',
+            data: newSubscription,
+        });
     } catch (error) {
         console.error('Error saving subscription:', error);
-        return res.status(500).json({ message: 'Failed to subscribe user.' });
+        return res.status(500).json({ message: 'Failed to subscribe device.' });
     }
 };
+
 
 // Unsubscribe User from Push Notifications
 exports.unsubscribe = async (req, res) => {

@@ -15,8 +15,12 @@ Subscription.init({
         type: DataTypes.INTEGER(11),
         allowNull: false, // Foreign key for User model
     },
+    deviceId: {
+        type: DataTypes.STRING, // Store unique device identifier
+        allowNull: false,
+    },
     subscription: {
-        type: DataTypes.JSON,  // Use JSON instead of JSONB
+        type: DataTypes.JSON, // Use JSON for push subscription details
         allowNull: false,
     },
 }, {

@@ -233,23 +233,38 @@ exports.sendMessage = async (req, res, io) => {
             }
 
             const pushPromises = filteredParticipants.map(async (participant) => {
-                const subscription = await Subscription.findOne({
+                // Fetch all subscriptions for the user
+                const subscriptions = await Subscription.findAll({
                     where: { userId: participant.user.id },
                 });
-
-                if (subscription) {
-                    const subscriptionObject = JSON.parse(subscription.subscription);
-                    try {
-                        await webPush.sendNotification(subscriptionObject, JSON.stringify({
-                            title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                            body: content,
-                            file: fileUrl, // Include file link in the notification if present
-                        }));
-                    } catch (error) {
-                        console.error('Error sending push notification:', error);
-                    }
+            
+                if (subscriptions.length > 0) {
+                    const notificationPayload = JSON.stringify({
+                        title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                        body: content,
+                        file: fileUrl, // Include file link in the notification if present
+                    });
+            
+                    // Send notifications to all devices
+                    const sendPromises = subscriptions.map(async (subscription) => {
+                        const subscriptionObject = JSON.parse(subscription.subscription);
+                        try {
+                            await webPush.sendNotification(subscriptionObject, notificationPayload);
+                        } catch (error) {
+                            console.error('Error sending push notification:', error);
+            
+                            // Remove invalid/expired subscriptions
+                            if (error.statusCode === 410) { // "Gone" status
+                                console.log('Removing expired subscription:', subscription.deviceId);
+                                await Subscription.destroy({ where: { id: subscription.id } });
+                            }
+                        }
+                    });
+            
+                    // Wait for all notifications to complete
+                    await Promise.all(sendPromises);
                 }
-            });
+            });            
 
             await Promise.all(pushPromises);
 
