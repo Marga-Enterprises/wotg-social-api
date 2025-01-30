@@ -64,7 +64,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                         attributes: ['id', 'user_fname', 'user_lname'], // Fetch only the necessary fields
                     },
                 ],
-                order: [['createdAt', 'ASC']], // Order messages by createdAt in ascending order
+                order: [['createdAt', 'DESC']], // Order messages by createdAt in ascending order
             });
 
             // Identify unread messages for the user
