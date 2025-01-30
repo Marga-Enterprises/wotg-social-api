@@ -247,7 +247,8 @@ exports.sendMessage = async (req, res, io) => {
             
                     // Send notifications to all devices
                     const sendPromises = subscriptions.map(async (subscription) => {
-                        const subscriptionObject = subscription.subscription;
+                        const subscriptionObject = 
+                              process.env.NODE_ENV === 'development' ? JSON.parse(subscription.subscription) : subscription.subscription;
                         try {
                             await webPush.sendNotification(subscriptionObject, notificationPayload);
                         } catch (error) {
