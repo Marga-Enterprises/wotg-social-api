@@ -4,6 +4,7 @@ const Participant = require('../models/Participant');
 const User = require('../models/User'); 
 const Message = require('../models/Message'); 
 const MessageReadStatus = require('../models/MessageReadStatus'); 
+const upload = require('./upload');
 
 const {
     sendError,
@@ -268,6 +269,65 @@ exports.createChatroom = async (req, res, io) => {
     } else {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
+};
+
+exports.updateChatroom = async (req, res, io) => {
+    // Use Multer middleware to handle file upload
+    upload.single("chatroom_photo")(req, res, async (err) => {
+      if (err) {
+        console.error("❌ Error uploading file:", err);
+        return sendError(res, err, "Failed to upload file.");
+      }
+  
+      try {
+        const { id } = req.params;
+        const { name } = req.body;
+        const userId = req.user.id; // ✅ Get authenticated user ID
+  
+        console.log("🔍 Checking chatroom ID:", id);
+        console.log("🔍 Checking user ID:", userId);
+  
+        const chatroom = await Chatroom.findByPk(id);
+        if (!chatroom) {
+          return sendError(res, "", "Chatroom not found.");
+        }
+  
+        // ✅ Check if the user is a participant
+        const isParticipant = await Participant.findOne({
+          where: { chatRoomId: id, userId: userId }, // Make sure field names match DB
+        });
+  
+        if (!isParticipant) {
+          console.warn("🚫 Unauthorized: User is not a participant of this chatroom.");
+          return sendError(res, "", "You are not allowed to edit this chatroom.");
+        }
+  
+        // ✅ Update chatroom details
+        chatroom.name = name || chatroom.name;
+        if (req.file) {
+          chatroom.chatroom_photo = req.file.filename;
+        }
+  
+        await chatroom.save();
+  
+        console.log("✅ Chatroom updated:", chatroom);
+  
+        // 🔥 Emit real-time event to notify participants
+        io.to(`chatroom_${id}`).emit("chatroomUpdated", {
+          id: chatroom.id,
+          name: chatroom.name,
+          chatroom_photo: chatroom.chatroom_photo
+            ? `${process.env.BASE_URL}/uploads/${chatroom.chatroom_photo}`
+            : null,
+        });
+  
+        return sendSuccess(res, chatroom, "Chatroom updated successfully.");
+  
+      } catch (error) {
+        console.error("❌ Error updating chatroom:", error);
+        return sendError(res, error, "Failed to update chatroom.");
+      }
+    });
 };
 
 
