@@ -33,7 +33,7 @@ exports.validateAndRedirect = async (req, res) => {
             iss: process.env.APP_ID, 
         };
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1y' });
 
         // Return the Jitsi meeting URL with the roomname and JWT
         const jitsiUrl = `https://meet.wotgonline.com/${roomname}?jwt=${token}`;

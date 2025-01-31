@@ -43,7 +43,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                             {
                                 model: User,
                                 as: 'user',
-                                attributes: ['id', 'user_fname', 'user_lname'],
+                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
                             },
                         ],
                     },
@@ -61,7 +61,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                     {
                         model: User,
                         as: 'sender',
-                        attributes: ['id', 'user_fname', 'user_lname'], // Fetch only the necessary fields
+                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'], // Fetch only the necessary fields
                     },
                 ],
                 order: [['createdAt', 'DESC']], // Order messages by createdAt in ascending order
@@ -175,7 +175,7 @@ exports.sendMessage = async (req, res, io) => {
                     {
                         model: User,
                         as: 'sender',
-                        attributes: ['id', 'user_fname', 'user_lname'],
+                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
                     },
                 ],
             });
@@ -191,7 +191,7 @@ exports.sendMessage = async (req, res, io) => {
                     {
                         model: User,
                         as: 'user',
-                        attributes: ['id', 'user_fname', 'user_lname'],
+                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
                     },
                 ],
             });

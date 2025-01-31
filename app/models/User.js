@@ -94,7 +94,7 @@ User.init({
         defaultValue: 0,
     },
     user_profile_picture: {
-        type: DataTypes.BLOB('long'),
+        type: DataTypes.STRING(255),
         allowNull: true,
         defaultValue: null,
     },
