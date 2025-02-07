@@ -46,7 +46,7 @@ exports.getAllChatrooms = async (req, res) => {
                         model: Message, // Include the messages to fetch the latest message
                         as: 'messages', // Alias for the association
                         required: false, // Allow chatrooms with no messages
-                        attributes: ['id', 'createdAt', 'content'], // Select necessary fields
+                        attributes: ['id', 'createdAt', 'content', 'senderId'], // Select necessary fields
                         order: [['createdAt', 'DESC']], // Sort messages by the most recent
                         limit: 1, // Fetch only the most recent message
                     },
@@ -271,67 +271,81 @@ exports.createChatroom = async (req, res, io) => {
     }
 };
 
-exports.updateChatroom = async (req, res, io) => {
-    // Use Multer middleware to handle file upload
-    upload.single("chatroom_photo")(req, res, async (err) => {
-      if (err) {
-        console.error("❌ Error uploading file:", err);
-        return sendError(res, err, "Failed to upload file.");
-      }
-  
-      try {
-        const { id } = req.params;
-        const { name } = req.body;
-        const userId = req.user.id; // ✅ Get authenticated user ID
-  
-        console.log("🔍 Checking chatroom ID:", id);
-        console.log("🔍 Checking user ID:", userId);
-  
-        const chatroom = await Chatroom.findByPk(id);
-        if (!chatroom) {
-          return sendError(res, "", "Chatroom not found.");
+
+exports.addParticipants = async (req, res, io) => {
+    let token = getToken(req.headers);
+    if (token) {
+        const userDecoded = decodeToken(token);
+        const { chatroomId, userIds } = req.body;
+
+        if (!chatroomId || !Array.isArray(userIds) || userIds.length === 0) {
+            return sendError(res, null, "Chatroom ID and at least one User ID are required.");
         }
-  
-        // ✅ Check if the user is a participant
-        const isParticipant = await Participant.findOne({
-          where: { chatRoomId: id, userId: userId }, // Make sure field names match DB
-        });
-  
-        if (!isParticipant) {
-          console.warn("🚫 Unauthorized: User is not a participant of this chatroom.");
-          return sendError(res, "", "You are not allowed to edit this chatroom.");
+
+        try {
+            const chatroom = await Chatroom.findByPk(chatroomId);
+            if (!chatroom) {
+                return sendError(res, null, "Chatroom not found.");
+            }
+
+            const existingParticipants = await Participant.findAll({
+                where: { chatRoomId: chatroomId, userId: userIds },
+                attributes: ['userId'],
+            });
+
+            const existingUserIds = existingParticipants.map(participant => participant.userId);
+            const newUserIds = userIds.filter(userId => !existingUserIds.includes(userId));
+
+            if (newUserIds.length === 0) {
+                return sendError(res, null, "All users are already participants in this chatroom.");
+            }
+
+            const users = await User.findAll({
+                where: { id: newUserIds },
+                attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture'],
+            });
+
+            const newParticipants = await Participant.bulkCreate(
+                users.map(user => ({
+                    chatRoomId: chatroomId,
+                    userId: user.id,
+                    userName: `${user.user_fname} ${user.user_lname}`,
+                }))
+            );
+
+            const chatroomParticipants = await Participant.findAll({
+                where: { chatRoomId: chatroomId },
+                include: [
+                    {
+                        model: User,
+                        as: 'user',
+                        attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture'],
+                    },
+                ],
+                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+            });
+
+            const chatroomWithParticipants = {
+                id: chatroom.id,
+                name: chatroom.name,
+                type: chatroom.type,
+                createdAt: chatroom.createdAt,
+                updatedAt: chatroom.updatedAt,
+                messages: [],
+                Participants: chatroomParticipants,
+                unreadCount: 0,
+                hasUnread: false,
+            };
+
+            if (io) {
+                io.emit('new_participants', chatroomWithParticipants);
+            }
+
+            return sendSuccess(res, chatroomWithParticipants, 'You are added to the group chat.');
+        } catch (error) {
+            return sendError(res, error, 'Failed to add participants to chatroom.');
         }
-  
-        // ✅ Update chatroom details
-        chatroom.name = name || chatroom.name;
-        if (req.file) {
-          chatroom.chatroom_photo = req.file.filename;
-        }
-  
-        await chatroom.save();
-  
-        console.log("✅ Chatroom updated:", chatroom);
-  
-        // 🔥 Emit real-time event to notify participants
-        io.to(`chatroom_${id}`).emit("chatroomUpdated", {
-          id: chatroom.id,
-          name: chatroom.name,
-          chatroom_photo: chatroom.chatroom_photo
-            ? `${process.env.BASE_URL}/uploads/${chatroom.chatroom_photo}`
-            : null,
-        });
-  
-        return sendSuccess(res, chatroom, "Chatroom updated successfully.");
-  
-      } catch (error) {
-        console.error("❌ Error updating chatroom:", error);
-        return sendError(res, error, "Failed to update chatroom.");
-      }
-    });
+    } else {
+        return sendErrorUnauthorized(res, "", "Please login first.");
+    }
 };
-
-
-
-
-
-
