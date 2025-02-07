@@ -23,82 +23,76 @@ const {
 } = require("../../utils/methods");
 
 exports.loginUser = async (req, res) => {
-    const { email, password } = req.body;
-  
-    // Validate required fields
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
-    }
-  
-    try {
-      // Find user by email
-      const user = await User.findOne({ where: { email } });
-      if (!user) {
-        return sendErrorUnauthorized(res, '', 'User not found.');
-      }
-  
-      // Check if the password matches
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
-        return sendErrorUnauthorized(res, '', 'Password Incorrect.');
-      }
-  
-      // Skip creating a room for the wotgadmin user
-      if (email !== 'wotgadmin@wotgonline.com') {
-        // Get the admin user by email
-        const adminUser = await User.findOne({ where: { email: 'wotgadmin@wotgonline.com' } });
-        if (!adminUser) {
-          // return res.status(500).json({ error: 'Admin user not found. Please contact support.' });
-          return sendError(res, '', 'Admin user not found. Please contact support.');
-        }
-  
-        // Check if a chatroom already exists for the logged-in user and admin
-        const existingChatroom = await Participant.findAll({
-          where: { userId: [user.id, adminUser.id] },
-          attributes: ['chatRoomId'],
-          group: ['chatRoomId'],
-          having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure both participants are present
-        });
+  const { email, password } = req.body;
 
-        if (existingChatroom.length === 0) {
-            // Concatenate names for the chatroom name
-            const chatroomName = `${adminUser.user_fname} ${adminUser.user_lname}, ${user.user_fname} ${user.user_lname}`;
-        
-            // Create a new private chatroom with concatenated names
-            const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
-        
-            // Add participants to the chatroom
-            await Participant.bulkCreate([
-                { userId: user.id, chatRoomId: chatroom.id },
-                { userId: adminUser.id, chatRoomId: chatroom.id },
-            ]);
-        }
-      
-      }
-  
-      // Generate JWT token
-      const token = jwt.sign(
-        {
-          user: {
-            id: user.id,
-            user_role: user.user_role,
-            user_fname: user.user_fname,
-            user_lname: user.user_lname,
-            user_profile_picture: user.user_profile_picture,
-            email: user.email,
-          },
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '1y' }
-      );
-  
-      // Send the response with user details and token
-      return sendSuccess(res, { token });
-    } catch (err) {
-      console.error('Sequelize error:', err);
-      res.status(500).json({ error: 'Internal server error.' });
+  // Validate required fields
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    // Find user by email
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return sendErrorUnauthorized(res, '', 'User not found.');
     }
+
+    // Check if the password matches
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return sendErrorUnauthorized(res, '', 'Password Incorrect.');
+    }
+
+    // Define the chatroomId (already existing chatroom)
+    const chatroomId = process.env.NODE_ENV = 'development' ? 37 : 5; // Existing group chat ID
+
+    // Check if the chatroom exists
+    const chatroom = await Chatroom.findByPk(chatroomId);
+    if (!chatroom) {
+      return sendError(res, '', `Chatroom with ID ${chatroomId} does not exist.`);
+    }
+
+    // Check if the logged-in user is already a participant in the chatroom
+    const isAlreadyParticipant = await Participant.findOne({
+      where: { chatRoomId: chatroomId, userId: user.id },
+    });
+
+    // If not a participant, add the user to the chatroom
+    if (!isAlreadyParticipant) {
+      await Participant.create({
+        chatRoomId: chatroomId,
+        userId: user.id,
+        userName: `${user.user_fname} ${user.user_lname}`,
+      });
+      console.log(`User ${user.id} added to chatroomId: ${chatroomId}`);
+    } else {
+      console.log(`User ${user.id} is already a participant of chatroomId: ${chatroomId}`);
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        user: {
+          id: user.id,
+          user_role: user.user_role,
+          user_fname: user.user_fname,
+          user_lname: user.user_lname,
+          user_profile_picture: user.user_profile_picture,
+          email: user.email,
+        },
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '1y' }
+    );
+
+    // Send the response with user details and token
+    return sendSuccess(res, { token });
+  } catch (err) {
+    console.error('Sequelize error:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
 };
+
 
 exports.createUser = async (req, res) => {
     const { 
