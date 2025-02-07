@@ -44,7 +44,7 @@ exports.loginUser = async (req, res) => {
     }
 
     // Define the chatroomId (already existing chatroom)
-    const chatroomId = process.env.NODE_ENV = 'development' ? 37 : 5; // Existing group chat ID
+    const chatroomId = process.env.NODE_ENV === 'development' ? 37 : 5; // Existing group chat ID
 
     // Check if the chatroom exists
     const chatroom = await Chatroom.findByPk(chatroomId);
