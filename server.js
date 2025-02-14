@@ -15,6 +15,7 @@ const messageRoutes = require('./app/routes/message');
 const subscriptionRoutes = require('./app/routes/subscription');
 const userRoutes = require('./app/routes/user');
 const meetingroomRoutes = require('./app/routes/meetingroom');
+const streamRoutes = require('./app/routes/stream');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -23,7 +24,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
       origin: process.env.NODE_ENV === "production"
-        ? ["https://chat.wotgonline.com", "https://www.wotgonline.com", "https://wotgonline.com"]
+        ? ["https://chat.wotgonline.com", "https://www.wotgonline.com", "https://wotgonline.com", "https://live.wotgonline.com"]
         : ["http://localhost:3000"], // URL for development
       methods: ['GET', 'POST', 'DELETE', 'PUT'], // Allowed methods
     },
@@ -52,6 +53,7 @@ app.use('/users', userRoutes);
 app.use('/chatrooms', chatroomRoutes(io));
 app.use('/messages', messageRoutes(io)); 
 app.use('/meetingrooms', meetingroomRoutes(io));
+app.use('/stream', streamRoutes(io));
 app.use('/subscriptions', subscriptionRoutes); 
 app.use('/uploads', express.static('uploads'));
 
