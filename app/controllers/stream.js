@@ -4,6 +4,8 @@ const {
     sendSuccess
 } = require("../../utils/methods");
 
+const fs = require("fs");
+
 const RTMP_SERVER = "rtmp://live.wotgonline.com/live/teststream";
 const HLS_PATH = "/var/www/html/hls/teststream.m3u8";
 let ffmpegProcess = null;
