@@ -16,7 +16,7 @@ exports.startStream = async (req, res, io) => {
 
         console.log("🚀 Starting FFmpeg stream...");
 
-        // **Check if HLS directory exists**
+        // **Ensure HLS directory exists**
         if (!fs.existsSync(HLS_OUTPUT_DIR)) {
             console.log(`⚠️ HLS directory not found. Creating: ${HLS_OUTPUT_DIR}`);
             fs.mkdirSync(HLS_OUTPUT_DIR, { recursive: true });
@@ -24,26 +24,36 @@ exports.startStream = async (req, res, io) => {
             console.log(`✅ HLS directory exists: ${HLS_OUTPUT_DIR}`);
         }
 
-        // **FFmpeg Command to Process WebRTC Stream and Save as HLS**
+        // **FFmpeg Real-Time Optimized Command**
         ffmpegProcess = spawn("ffmpeg", [
+            "-re",  // Real-time processing
             "-f", "webm",  // WebRTC format
             "-i", "pipe:0", // Read input from stdin
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-b:v", "3000k",
-            "-maxrate", "3000k",
-            "-bufsize", "6000k",
+
+            // **Video Optimization**
+            "-c:v", "libx264", // Efficient encoding
+            "-preset", "ultrafast", // Fastest encoding
+            "-tune", "zerolatency", // Low latency tuning
+            "-b:v", "2500k", // Bitrate
+            "-maxrate", "2500k",
+            "-bufsize", "5000k",
             "-pix_fmt", "yuv420p",
-            "-g", "60",
+            "-g", "30", // GOP size (lower = lower latency)
+            "-r", "30", // Frame rate
+
+            // **Audio Optimization**
             "-c:a", "aac",
             "-b:a", "128k",
             "-ar", "44100",
+            "-ac", "2",
 
-            // HLS Output
+            // **HLS Real-Time Streaming Output**
             "-f", "hls",
-            "-hls_time", "3",
-            "-hls_list_size", "10",
-            "-hls_flags", "delete_segments",
+            "-hls_time", "1",          // Lower segment time for real-time streaming
+            "-hls_list_size", "5",     // Keep last 5 segments (faster updates)
+            "-hls_flags", "delete_segments+append_list", // Keep appending new segments
+            "-hls_segment_type", "mpegts", // Ensures compatibility
+            "-hls_allow_cache", "0",  // No caching (reduces delay)
             "-hls_segment_filename", `${HLS_OUTPUT_DIR}segment-%03d.ts`,
             HLS_PLAYLIST
         ]);
@@ -59,16 +69,7 @@ exports.startStream = async (req, res, io) => {
             ffmpegProcess = null;
         });
 
-        // **Check if .ts files are being created**
-        setTimeout(() => {
-            const files = fs.readdirSync(HLS_OUTPUT_DIR);
-            if (files.length > 0) {
-                console.log(`✅ HLS files detected: ${files}`);
-            } else {
-                console.log("❌ No HLS segments found! FFmpeg may not be writing .ts files.");
-            }
-        }, 5000); // Check after 5 seconds
-
+        // **Emit real-time stream status**
         io.emit("stream_status", { status: "started" });
 
         return res.json({ success: true, message: "🎥 Streaming started!" });
