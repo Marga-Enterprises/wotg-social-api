@@ -82,15 +82,14 @@ exports.handleWebRTCSignaling = (io) => {
             try {
                 producer = await producerTransport.produce({
                     kind: "video",
-                    rtpParameters, // ✅ Ensure this is a valid object
+                    rtpParameters, // ✅ Now a valid object
                 });
         
                 ioInstance.emit("stream_started", { producerId: producer.id });
             } catch (error) {
                 console.error("❌ Error producing stream:", error);
             }
-        });
-              
+        });           
 
         socket.on("join_webrtc_stream", async () => {
             if (!producer) return;
