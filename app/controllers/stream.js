@@ -8,8 +8,12 @@ let worker, router, producerTransport, consumerTransports = [];
 async function createMediasoupWorker() {
     worker = await mediasoup.createWorker();
     router = await worker.createRouter({
-        mediaCodecs: [{ kind: "video", mimeType: "video/vp8", clockRate: 90000 }],
+        mediaCodecs: [
+            { kind: "video", mimeType: "video/VP8", clockRate: 90000 },
+            { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 }
+        ],
     });
+    
 
     producerTransport = await router.createWebRtcTransport({
         listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
@@ -65,9 +69,24 @@ exports.handleWebRTCSignaling = (io) => {
         console.log("🔗 New user connected:", socket.id);
 
         socket.on("start_webrtc_stream", async ({ sdp }) => {
-            producer = await producerTransport.produce({ kind: "video", rtpParameters: sdp });
-            ioInstance.emit("stream_started", { sdp: producer.sdp });
+            if (!router) {
+                console.error("❌ Mediasoup Router not initialized.");
+                return;
+            }
+        
+            try {
+                producer = await producerTransport.produce({
+                    kind: "video",
+                    rtpParameters: sdp, // ✅ Make sure `sdp` includes rtpParameters
+                    rtpCapabilities: router.rtpCapabilities, // ✅ Include the router codecs
+                });
+        
+                ioInstance.emit("stream_started", { sdp: producer.sdp });
+            } catch (error) {
+                console.error("❌ Error producing stream:", error);
+            }
         });
+        
 
         socket.on("join_webrtc_stream", async () => {
             if (!producer) return;
