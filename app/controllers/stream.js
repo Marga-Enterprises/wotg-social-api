@@ -74,17 +74,23 @@ exports.handleWebRTCSignaling = (io) => {
                 return;
             }
         
+            if (!rtpParameters || typeof rtpParameters !== "object") {
+                console.error("❌ Invalid rtpParameters received:", rtpParameters);
+                return;
+            }
+        
             try {
                 producer = await producerTransport.produce({
                     kind: "video",
-                    rtpParameters, // ✅ Use correct rtpParameters from frontend
+                    rtpParameters, // ✅ Ensure this is a valid object
                 });
         
-                ioInstance.emit("stream_started", { producerId: producer.id }); // ✅ Send producerId instead of SDP
+                ioInstance.emit("stream_started", { producerId: producer.id });
             } catch (error) {
                 console.error("❌ Error producing stream:", error);
             }
-        });        
+        });
+              
 
         socket.on("join_webrtc_stream", async () => {
             if (!producer) return;
