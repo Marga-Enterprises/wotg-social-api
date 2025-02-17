@@ -68,7 +68,7 @@ exports.handleWebRTCSignaling = (io) => {
     ioInstance.on("connection", (socket) => {
         console.log("🔗 New user connected:", socket.id);
 
-        socket.on("start_webrtc_stream", async ({ sdp }) => {
+        socket.on("start_webrtc_stream", async ({ rtpParameters }) => {
             if (!router) {
                 console.error("❌ Mediasoup Router not initialized.");
                 return;
@@ -77,16 +77,14 @@ exports.handleWebRTCSignaling = (io) => {
             try {
                 producer = await producerTransport.produce({
                     kind: "video",
-                    rtpParameters: sdp, // ✅ Make sure `sdp` includes rtpParameters
-                    rtpCapabilities: router.rtpCapabilities, // ✅ Include the router codecs
+                    rtpParameters, // ✅ Use correct rtpParameters from frontend
                 });
         
-                ioInstance.emit("stream_started", { sdp: producer.sdp });
+                ioInstance.emit("stream_started", { producerId: producer.id }); // ✅ Send producerId instead of SDP
             } catch (error) {
                 console.error("❌ Error producing stream:", error);
             }
-        });
-        
+        });        
 
         socket.on("join_webrtc_stream", async () => {
             if (!producer) return;
