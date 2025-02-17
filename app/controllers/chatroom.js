@@ -5,6 +5,8 @@ const User = require('../models/User');
 const Message = require('../models/Message'); 
 const MessageReadStatus = require('../models/MessageReadStatus'); 
 const upload = require('./upload');
+const fs = require("fs");
+const path = require("path");
 
 const {
     sendError,
@@ -348,4 +350,69 @@ exports.addParticipants = async (req, res, io) => {
     } else {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
+};
+
+exports.updateChatroom = async (req, res, io) => {
+    upload.single("file")(req, res, async (err) => {
+        if (err) {
+            return sendError(res, null, "File upload failed.");
+        }
+
+        let token = getToken(req.headers);
+        if (!token) {
+            return sendErrorUnauthorized(res, "", "Please login first.");
+        }
+
+        const userDecoded = decodeToken(token);
+        const chatroomId = req.params.id; // Get chatroom ID from params
+        const { name } = req.body;
+        let chatroom_photo = req.file ? req.file.filename : null;
+
+        if (!chatroomId) {
+            return sendError(res, null, "Chatroom ID is required.");
+        }
+
+        try {
+            // Find the chatroom
+            const chatroom = await Chatroom.findByPk(chatroomId);
+            if (!chatroom) {
+                return sendError(res, null, "Chatroom not found.");
+            }
+
+            // Update fields dynamically
+            const updateFields = {};
+            if (name) updateFields.name = name;
+            if (chatroom_photo) updateFields.chatroom_photo = chatroom_photo;
+
+            // Perform update
+            await chatroom.update(updateFields);
+
+            // Fetch updated chatroom with participants
+            const updatedChatroom = await Chatroom.findByPk(chatroomId, {
+                include: [
+                    {
+                        model: Participant,
+                        include: [
+                            {
+                                model: User,
+                                as: 'user',
+                                attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture'],
+                            },
+                        ],
+                        attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+                    },
+                ],
+            });
+
+            // Emit real-time update event
+            if (io) {
+                io.emit("chatroom_updated", updatedChatroom);
+            }
+
+            return sendSuccess(res, updatedChatroom, "Chatroom updated successfully.");
+        } catch (error) {
+            console.log('[[[[[[[[[ERRRORRRRRR]]]]]]]]]', error);
+            return sendError(res, error, "Failed to update chatroom.");
+        }
+    });
 };
