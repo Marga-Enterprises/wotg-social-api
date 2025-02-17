@@ -6,6 +6,7 @@ module.exports = (io) => {
 
     router.post('/start', (req, res) => streamController.startStream(req, res, io));
     router.post('/stop', (req, res) => streamController.stopStream(req, res, io));
+    router.get("/rtpCapabilities", streamController.getRtpCapabilities);
 
     return router;
 };

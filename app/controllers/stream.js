@@ -41,6 +41,15 @@ exports.startStream = async (req, res, io) => {
     }
 };
 
+exports.getRtpCapabilities = async (req, res) => {
+    if (!router) {
+        return res.status(500).json({ success: false, message: "Mediasoup Router not initialized." });
+    }
+
+    return res.json({ success: true, rtpCapabilities: router.rtpCapabilities });
+};
+
+
 // ✅ API: Stop WebRTC Stream
 exports.stopStream = async (req, res, io) => {
     try {
@@ -69,12 +78,14 @@ exports.handleWebRTCSignaling = (io) => {
         console.log("🔗 New user connected:", socket.id);
 
         socket.on("start_webrtc_stream", async ({ rtpParameters }) => {
+            console.log('RTP PARAMS', rtpParameters); 
             if (!router) {
                 console.error("❌ Mediasoup Router not initialized.");
                 return;
             }
         
-            if (!rtpParameters || typeof rtpParameters !== "object") {
+            // ✅ Validate `rtpParameters` before proceeding
+            if (!rtpParameters || !Array.isArray(rtpParameters) || rtpParameters.length === 0) {
                 console.error("❌ Invalid rtpParameters received:", rtpParameters);
                 return;
             }
@@ -82,14 +93,15 @@ exports.handleWebRTCSignaling = (io) => {
             try {
                 producer = await producerTransport.produce({
                     kind: "video",
-                    rtpParameters, // ✅ Now a valid object
+                    rtpParameters: rtpParameters[0], // ✅ Use the first valid set of `rtpParameters`
                 });
         
                 ioInstance.emit("stream_started", { producerId: producer.id });
             } catch (error) {
                 console.error("❌ Error producing stream:", error);
             }
-        });           
+        });
+                 
 
         socket.on("join_webrtc_stream", async () => {
             if (!producer) return;
