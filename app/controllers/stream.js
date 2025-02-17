@@ -26,6 +26,7 @@ async function createMediasoupWorker() {
 
 // ✅ API: Start WebRTC Stream
 exports.startStream = async (req, res, io) => {
+    console.log('STEAM STARTED');
     try {
         if (producer) {
             return res.status(400).json({ success: false, message: "Stream is already running." });
@@ -72,19 +73,25 @@ exports.stopStream = async (req, res, io) => {
 
 // ✅ WebRTC Signaling (Socket.io) - Use Existing `io` Instance
 exports.handleWebRTCSignaling = (io) => {
-    ioInstance = io; // ✅ Use existing `io` from `server.js`, no new Server instance
+    ioInstance = io; // ✅ Use existing `io` from `server.js`
 
     ioInstance.on("connection", (socket) => {
         console.log("🔗 New user connected:", socket.id);
 
+        // ✅ Handle ICE Candidate Exchange
+        socket.on("webrtc_ice_candidate", (candidate) => {
+            console.log("📡 Received ICE candidate:", candidate);
+            socket.broadcast.emit("webrtc_ice_candidate", candidate);
+        });
+
         socket.on("start_webrtc_stream", async ({ rtpParameters }) => {
-            console.log('RTP PARAMS', rtpParameters); 
+            console.log("📡 RTP PARAMS RECEIVED:", rtpParameters);
+        
             if (!router) {
                 console.error("❌ Mediasoup Router not initialized.");
                 return;
             }
         
-            // ✅ Validate `rtpParameters` before proceeding
             if (!rtpParameters || !Array.isArray(rtpParameters) || rtpParameters.length === 0) {
                 console.error("❌ Invalid rtpParameters received:", rtpParameters);
                 return;
@@ -93,32 +100,60 @@ exports.handleWebRTCSignaling = (io) => {
             try {
                 producer = await producerTransport.produce({
                     kind: "video",
-                    rtpParameters: rtpParameters[0], // ✅ Use the first valid set of `rtpParameters`
+                    rtpParameters: rtpParameters[0],
                 });
         
-                ioInstance.emit("stream_started", { producerId: producer.id });
+                console.log("✅ Producer created, notifying viewers...");
+        
+                // 🚀 Instead of sending an SDP, notify viewers that streaming is available
+                ioInstance.emit("stream_started", { status: "started" });
+        
             } catch (error) {
                 console.error("❌ Error producing stream:", error);
             }
         });
-                 
+        
+                
 
-        socket.on("join_webrtc_stream", async () => {
-            if (!producer) return;
-            const consumerTransport = await router.createWebRtcTransport({
-                listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
-                enableUdp: true,
-                enableTcp: true,
-            });
-
-            const consumer = await consumerTransport.consume({
-                producerId: producer.id,
-                rtpCapabilities: router.rtpCapabilities,
-            });
-
-            consumerTransports.push(consumerTransport);
-            socket.emit("stream_data", { sdp: consumer.sdp });
+        socket.on("join_webrtc_stream", async (data) => {
+            if (!producer) {
+                console.error("❌ No active producer to consume.");
+                return;
+            }
+        
+            try {
+                // ✅ Create a consumer WebRTC transport
+                const consumerTransport = await router.createWebRtcTransport({
+                    listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
+                    enableUdp: true,
+                    enableTcp: true,
+                });
+        
+                // ✅ Create a consumer
+                const consumer = await consumerTransport.consume({
+                    producerId: producer.id,
+                    rtpCapabilities: data.rtpCapabilities, // 👀 Viewer must send rtpCapabilities
+                    paused: false
+                });
+        
+                consumerTransports.push(consumerTransport);
+        
+                console.log("✅ Consumer Transport Created!");
+        
+                // ✅ Send Transport and Consumer info to Viewer
+                socket.emit("consumer_transport_info", {
+                    id: consumerTransport.id,
+                    iceParameters: consumerTransport.iceParameters,
+                    iceCandidates: consumerTransport.iceCandidates,
+                    dtlsParameters: consumerTransport.dtlsParameters,
+                    rtpParameters: consumer.rtpParameters, // 🚀 Send correct Mediasoup parameters
+                });
+        
+            } catch (error) {
+                console.error("❌ Error creating consumer:", error);
+            }
         });
+        
 
         socket.on("disconnect", () => {
             console.log("❌ User disconnected:", socket.id);
@@ -127,3 +162,4 @@ exports.handleWebRTCSignaling = (io) => {
 
     createMediasoupWorker();
 };
+
