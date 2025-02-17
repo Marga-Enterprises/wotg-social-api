@@ -16,7 +16,7 @@ exports.startStream = async (req, res, io) => {
 
         console.log("🚀 Starting FFmpeg stream...");
 
-        // **Ensure HLS directory exists**
+        // ✅ Ensure HLS directory exists
         if (!fs.existsSync(HLS_OUTPUT_DIR)) {
             console.log(`⚠️ HLS directory not found. Creating: ${HLS_OUTPUT_DIR}`);
             fs.mkdirSync(HLS_OUTPUT_DIR, { recursive: true });
@@ -24,40 +24,40 @@ exports.startStream = async (req, res, io) => {
             console.log(`✅ HLS directory exists: ${HLS_OUTPUT_DIR}`);
         }
 
-        // **FFmpeg Real-Time Optimized Command**
+        // ✅ Optimized FFmpeg Streaming Command
         ffmpegProcess = spawn("ffmpeg", [
             "-re",
             "-f", "webm",
             "-i", "pipe:0",
-        
-            // ✅ Optimized Video Encoding for Stability
+
+            // ✅ Optimized Video Encoding for Stability & Quality
             "-c:v", "libx264",
-            "-preset", "ultrafast",
+            "-preset", "superfast",  // ✅ Faster encoding, less CPU usage
             "-tune", "zerolatency",
-            "-b:v", "2500k",
-            "-maxrate", "2500k",
-            "-bufsize", "5000k", // ✅ Increased buffer size for stability
+            "-b:v", "3000k", // ✅ Slightly higher bitrate for quality
+            "-maxrate", "3000k",
+            "-bufsize", "6000k", // ✅ Increased buffer size for stability
             "-pix_fmt", "yuv420p",
             "-g", "60",  // ✅ Higher GOP for smooth playback (~2s latency)
             "-r", "30",
-        
-            // ✅ Optimized Audio Processing
+
+            // ✅ Optimized Audio Processing (Avoids Desync)
             "-c:a", "aac",
             "-b:a", "128k",
             "-ar", "44100",
             "-ac", "2",
-        
-            // ✅ HLS Output with 2-Second Latency
+
+            // ✅ HLS Output for 2-Second Latency & Stability
             "-f", "hls",
             "-hls_time", "1",        // ✅ Each segment is 1 second (total ~2s latency)
-            "-hls_list_size", "6",   // ✅ Keep last 6 segments to ensure smooth playback
+            "-hls_list_size", "8",   // ✅ Keep last 8 segments (Ensures smooth transitions)
             "-hls_flags", "delete_segments+append_list+independent_segments",
             "-hls_segment_type", "fmp4",
             "-hls_fmp4_init_filename", "init.mp4",
             "-hls_allow_cache", "0",
-            "-hls_segment_filename", `${HLS_OUTPUT_DIR}segment-%03d.m4s`,
+            "-hls_segment_filename", `${HLS_OUTPUT_DIR}/segment-%03d.m4s`,
             HLS_PLAYLIST
-        ]);          
+        ]);
 
         console.log("🎥 FFmpeg started, waiting for WebRTC video input...");
 
@@ -70,7 +70,7 @@ exports.startStream = async (req, res, io) => {
             ffmpegProcess = null;
         });
 
-        // **Emit real-time stream status**
+        // ✅ Emit real-time stream status
         io.emit("stream_status", { status: "started" });
 
         return res.json({ success: true, message: "🎥 Streaming started!" });
@@ -80,17 +80,22 @@ exports.startStream = async (req, res, io) => {
     }
 };
 
-// **Handle WebRTC Video Stream from Frontend**
+// ✅ Handle WebRTC Video Stream from Frontend (Optimized for Stability)
 exports.handleWebRTCStream = (socket) => {
     socket.on("stream_data", (data) => {
         if (ffmpegProcess) {
-            console.log(`📡 Receiving WebRTC stream data (${data.length} bytes)`);
-            ffmpegProcess.stdin.write(data); // Send video data to FFmpeg
+            try {
+                ffmpegProcess.stdin.write(data); // ✅ Prevents buffering issues
+                console.log(`📡 Receiving WebRTC stream data (${data.length} bytes)`);
+            } catch (error) {
+                console.error("❌ FFmpeg input error:", error);
+            }
         } else {
             console.log("❌ No active FFmpeg process to handle WebRTC data.");
         }
     });
 };
+
 
 // **Stop Streaming**
 exports.stopStream = async (req, res, io) => {
