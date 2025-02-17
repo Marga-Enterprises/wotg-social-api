@@ -15,7 +15,7 @@ const messageRoutes = require("./app/routes/message");
 const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const meetingroomRoutes = require("./app/routes/meetingroom");
-const streamRoutes = require("./app/routes/stream");
+const streamRoutes = require("./app/routes/stream"); // 🔥 Updated route file
 
 const streamController = require("./app/controllers/stream");
 
@@ -49,20 +49,23 @@ webPush.setVapidDetails(
 app.use(express.json());
 app.use(cors());
 
-// Routes
+// ✅ Initialize Mediasoup (Starts the worker)
+streamController.initializeMediasoup();
+
+// ✅ Use Routes
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
 app.use("/meetingrooms", meetingroomRoutes(io));
-app.use("/stream", streamRoutes(io));
+app.use("/stream", streamRoutes(io)); // 🔥 WebRTC API routes
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/uploads", express.static("uploads"));
 
-// ✅ Use `io` in WebRTC Signaling
+// ✅ WebRTC Signaling Handled by `streamController.js`
 streamController.handleWebRTCSignaling(io);
 
-// **Socket.IO Connection**
+// **Socket.IO Connection** (Keep this part in `server.js`)
 io.on("connection", (socket) => {
     console.log(`🟢 User connected: ${socket.id}`);
 
@@ -81,7 +84,7 @@ io.on("connection", (socket) => {
     });
 });
 
-// Synchronize Sequelize models with the database
+// ✅ Sync Database
 sequelize
     .sync({ force: false })
     .then(() => {

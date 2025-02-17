@@ -1,38 +1,36 @@
 const mediasoup = require("mediasoup");
 
-let ioInstance = null;
-let producer = null;
-let worker, router, producerTransport, consumerTransports = [];
+let worker, router;
+const transports = [];
+const producers = [];
+const consumers = [];
 
-// ✅ Initialize WebRTC Worker & Transport
-async function createMediasoupWorker() {
+// ✅ Initialize Mediasoup Worker & Router
+exports.initializeMediasoup = async function () {
     worker = await mediasoup.createWorker();
     router = await worker.createRouter({
         mediaCodecs: [
             { kind: "video", mimeType: "video/VP8", clockRate: 90000 },
             { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 }
-        ],
-    });
-    
-
-    producerTransport = await router.createWebRtcTransport({
-        listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
-        enableUdp: true,
-        enableTcp: true,
+        ]
     });
 
-    console.log("✅ WebRTC Server Ready!");
-}
+    console.log("✅ Mediasoup Worker & Router created!");
+};
+
+// ✅ API: Get RTP Capabilities
+exports.getRtpCapabilities = async function (req, res) {
+    if (!router) {
+        return res.status(500).json({ success: false, message: "Mediasoup Router not initialized." });
+    }
+
+    return res.json({ success: true, rtpCapabilities: router.rtpCapabilities });
+};
 
 // ✅ API: Start WebRTC Stream
-exports.startStream = async (req, res, io) => {
-    console.log('STEAM STARTED');
+exports.startStream = async function (req, res, io) {
     try {
-        if (producer) {
-            return res.status(400).json({ success: false, message: "Stream is already running." });
-        }
-
-        console.log("🚀 Starting WebRTC stream...");
+        console.log("🚀 Starting WebRTC Stream...");
         io.emit("stream_status", { status: "started" });
 
         return res.json({ success: true, message: "🎥 WebRTC Streaming started!" });
@@ -42,25 +40,13 @@ exports.startStream = async (req, res, io) => {
     }
 };
 
-exports.getRtpCapabilities = async (req, res) => {
-    if (!router) {
-        return res.status(500).json({ success: false, message: "Mediasoup Router not initialized." });
-    }
-
-    return res.json({ success: true, rtpCapabilities: router.rtpCapabilities });
-};
-
-
 // ✅ API: Stop WebRTC Stream
-exports.stopStream = async (req, res, io) => {
+exports.stopStream = async function (req, res, io) {
     try {
-        if (!producer) {
-            return res.status(400).json({ success: false, message: "No active stream." });
-        }
-
-        console.log("🛑 Stopping WebRTC stream...");
-        producer.close();
-        producer = null;
+        console.log("🛑 Stopping WebRTC Stream...");
+        producers.forEach(p => p.close());
+        consumers.forEach(c => c.close());
+        transports.forEach(t => t.close());
 
         io.emit("stream_status", { status: "stopped" });
 
@@ -71,95 +57,129 @@ exports.stopStream = async (req, res, io) => {
     }
 };
 
-// ✅ WebRTC Signaling (Socket.io) - Use Existing `io` Instance
-exports.handleWebRTCSignaling = (io) => {
-    ioInstance = io; // ✅ Use existing `io` from `server.js`
-
-    ioInstance.on("connection", (socket) => {
-        console.log("🔗 New user connected:", socket.id);
-
-        // ✅ Handle ICE Candidate Exchange
-        socket.on("webrtc_ice_candidate", (candidate) => {
-            console.log("📡 Received ICE candidate:", candidate);
-            socket.broadcast.emit("webrtc_ice_candidate", candidate);
+// ✅ Create Producer Transport (Broadcaster)
+exports.createProducerTransport = async function (req, res) {
+    try {
+        const transport = await router.createWebRtcTransport({
+            listenIps: [{ ip: "0.0.0.0", announcedIp: process.env.PUBLIC_IP || "auto" }],
+            enableUdp: true,
+            enableTcp: true,
         });
 
-        socket.on("start_webrtc_stream", async ({ rtpParameters }) => {
-            console.log("📡 RTP PARAMS RECEIVED:", rtpParameters);
-        
-            if (!router) {
-                console.error("❌ Mediasoup Router not initialized.");
-                return;
-            }
-        
-            if (!rtpParameters || !Array.isArray(rtpParameters) || rtpParameters.length === 0) {
-                console.error("❌ Invalid rtpParameters received:", rtpParameters);
-                return;
-            }
-        
-            try {
-                producer = await producerTransport.produce({
-                    kind: "video",
-                    rtpParameters: rtpParameters[0],
-                });
-        
-                console.log("✅ Producer created, notifying viewers...");
-        
-                // 🚀 Instead of sending an SDP, notify viewers that streaming is available
-                ioInstance.emit("stream_started", { status: "started" });
-        
-            } catch (error) {
-                console.error("❌ Error producing stream:", error);
-            }
-        });
-        
-                
+        transports.push(transport);
 
-        socket.on("join_webrtc_stream", async (data) => {
-            if (!producer) {
-                console.error("❌ No active producer to consume.");
-                return;
-            }
-        
-            try {
-                // ✅ Create a consumer WebRTC transport
-                const consumerTransport = await router.createWebRtcTransport({
-                    listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
-                    enableUdp: true,
-                    enableTcp: true,
-                });
-        
-                // ✅ Create a consumer
-                const consumer = await consumerTransport.consume({
-                    producerId: producer.id,
-                    rtpCapabilities: data.rtpCapabilities, // 👀 Viewer must send rtpCapabilities
-                    paused: false
-                });
-        
-                consumerTransports.push(consumerTransport);
-        
-                console.log("✅ Consumer Transport Created!");
-        
-                // ✅ Send Transport and Consumer info to Viewer
-                socket.emit("consumer_transport_info", {
-                    id: consumerTransport.id,
-                    iceParameters: consumerTransport.iceParameters,
-                    iceCandidates: consumerTransport.iceCandidates,
-                    dtlsParameters: consumerTransport.dtlsParameters,
-                    rtpParameters: consumer.rtpParameters, // 🚀 Send correct Mediasoup parameters
-                });
-        
-            } catch (error) {
-                console.error("❌ Error creating consumer:", error);
-            }
+        return res.json({
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
         });
-        
-
-        socket.on("disconnect", () => {
-            console.log("❌ User disconnected:", socket.id);
-        });
-    });
-
-    createMediasoupWorker();
+    } catch (error) {
+        console.error("❌ Error creating producer transport:", error);
+        return res.status(500).json({ success: false, message: "Failed to create transport." });
+    }
 };
 
+// ✅ Connect Producer Transport
+exports.connectProducerTransport = async function (req, res) {
+    const { dtlsParameters } = req.body;
+    const transport = transports.find(t => t.id === req.body.transportId);
+
+    if (!transport) return res.status(400).json({ success: false, message: "Transport not found" });
+
+    await transport.connect({ dtlsParameters });
+
+    return res.json({ success: true });
+};
+
+// ✅ Produce Media
+exports.produce = async function (req, res) {
+    try {
+        const { kind, rtpParameters, transportId } = req.body;
+        const transport = transports.find(t => t.id === transportId);
+
+        if (!transport) return res.status(400).json({ success: false, message: "Transport not found" });
+
+        const producer = await transport.produce({ kind, rtpParameters });
+        producers.push(producer);
+
+        return res.json({ id: producer.id });
+    } catch (error) {
+        console.error("❌ Error producing stream:", error);
+        return res.status(500).json({ success: false, message: "Failed to produce media." });
+    }
+};
+
+// ✅ Create Consumer Transport (Viewer)
+exports.createConsumerTransport = async function (req, res) {
+    try {
+        const transport = await router.createWebRtcTransport({
+            listenIps: [{ ip: "0.0.0.0", announcedIp: process.env.PUBLIC_IP || "auto" }],
+            enableUdp: true,
+            enableTcp: true,
+        });
+
+        transports.push(transport);
+
+        return res.json({
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
+        });
+    } catch (error) {
+        console.error("❌ Error creating consumer transport:", error);
+        return res.status(500).json({ success: false, message: "Failed to create transport." });
+    }
+};
+
+// ✅ Connect Consumer Transport
+exports.connectConsumerTransport = async function (req, res) {
+    const { dtlsParameters } = req.body;
+    const transport = transports.find(t => t.id === req.body.transportId);
+
+    if (!transport) return res.status(400).json({ success: false, message: "Transport not found" });
+
+    await transport.connect({ dtlsParameters });
+
+    return res.json({ success: true });
+};
+
+// ✅ Consume Stream (Viewer)
+exports.consume = async function (req, res) {
+    if (!producers.length) return res.status(400).json({ success: false, message: "No active producer" });
+
+    const transport = transports.find(t => t.id === req.body.transportId);
+    if (!transport || !router.canConsume({ producerId: producers[0].id, rtpCapabilities: req.body.rtpCapabilities })) {
+        return res.status(400).json({ success: false, message: "Cannot consume" });
+    }
+
+    const consumer = await transport.consume({
+        producerId: producers[0].id,
+        rtpCapabilities: req.body.rtpCapabilities,
+        paused: false
+    });
+
+    consumers.push(consumer);
+
+    return res.json({
+        id: consumer.id,
+        producerId: producers[0].id,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+    });
+};
+
+exports.handleWebRTCSignaling = function (io) {
+    io.on("connection", (socket) => {
+        console.log(`📡 WebRTC User connected: ${socket.id}`);
+
+        socket.on("getRtpCapabilities", (callback) => {
+            callback(router.rtpCapabilities);
+        });
+
+        socket.on("disconnect", () => {
+            console.log(`📴 WebRTC User disconnected: ${socket.id}`);
+        });
+    });
+};
