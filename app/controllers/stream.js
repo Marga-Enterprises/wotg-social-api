@@ -27,36 +27,36 @@ exports.startStream = async (req, res, io) => {
         // **FFmpeg Real-Time Optimized Command**
         ffmpegProcess = spawn("ffmpeg", [
             "-re",  // Real-time processing
-            "-f", "webm",  // WebRTC format
-            "-i", "pipe:0", // Read input from stdin
-
+            "-f", "webm",  // WebRTC input format
+            "-i", "pipe:0", // Read from stdin
+        
             // **Video Optimization**
-            "-c:v", "libx264", // Efficient encoding
-            "-preset", "ultrafast", // Fastest encoding
-            "-tune", "zerolatency", // Low latency tuning
-            "-b:v", "2500k", // Bitrate
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-tune", "zerolatency",
+            "-b:v", "2500k",
             "-maxrate", "2500k",
-            "-bufsize", "5000k",
+            "-bufsize", "2500k", // Reduce buffer size for lower latency
             "-pix_fmt", "yuv420p",
-            "-g", "30", // GOP size (lower = lower latency)
-            "-r", "30", // Frame rate
-
+            "-g", "15",   // Lower GOP (15 is best for ~0.5s latency)
+            "-r", "30",   // Maintain 30fps
+        
             // **Audio Optimization**
             "-c:a", "aac",
             "-b:a", "128k",
             "-ar", "44100",
             "-ac", "2",
-
-            // **HLS Real-Time Streaming Output**
+        
+            // **Ultra-Low Latency HLS Output**
             "-f", "hls",
-            "-hls_time", "1",          // Lower segment time for real-time streaming
-            "-hls_list_size", "5",     // Keep last 5 segments (faster updates)
-            "-hls_flags", "delete_segments+append_list", // Keep appending new segments
-            "-hls_segment_type", "mpegts", // Ensures compatibility
-            "-hls_allow_cache", "0",  // No caching (reduces delay)
+            "-hls_time", "0.5",        // Keep segments at 0.5s (Super low)
+            "-hls_list_size", "3",     // Keep last 3 segments
+            "-hls_flags", "delete_segments+append_list+independent_segments", // Faster updates
+            "-hls_segment_type", "mpegts", 
+            "-hls_allow_cache", "0",  // Prevent caching (reduces delay)
             "-hls_segment_filename", `${HLS_OUTPUT_DIR}segment-%03d.ts`,
             HLS_PLAYLIST
-        ]);
+        ]);        
 
         console.log("🎥 FFmpeg started, waiting for WebRTC video input...");
 
