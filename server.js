@@ -8,7 +8,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const sequelize = require("./config/db");
 
-// Import routes
+// Import Routes
 const authRoutes = require("./app/routes/auth");
 const chatroomRoutes = require("./app/routes/chatroom");
 const messageRoutes = require("./app/routes/message");
@@ -17,7 +17,7 @@ const userRoutes = require("./app/routes/user");
 const meetingroomRoutes = require("./app/routes/meetingroom");
 const streamRoutes = require("./app/routes/stream");
 
-const streamController = require("./app/controllers/stream"); // ✅ Import stream controller
+const streamController = require("./app/controllers/stream");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -59,12 +59,12 @@ app.use("/stream", streamRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/uploads", express.static("uploads"));
 
+// **Initialize WebRTC Signaling**
+streamController.handleWebRTCSignaling(server, io);
+
 // **Socket.IO Connection**
 io.on("connection", (socket) => {
     console.log(`🟢 User connected: ${socket.id}`);
-
-    // ✅ Call WebRTC Stream Handler
-    streamController.handleWebRTCStream(socket);
 
     socket.on("join_room", (room) => {
         socket.join(room);

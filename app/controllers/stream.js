@@ -1,114 +1,53 @@
-const { spawn } = require("child_process");
-const fs = require("fs");
+const { Server } = require("socket.io");
+const mediasoup = require("mediasoup");
 
-const HLS_OUTPUT_DIR = "/var/www/html/hls/";
-const HLS_PLAYLIST = `${HLS_OUTPUT_DIR}teststream.m3u8`;
+let ioInstance = null;
+let producer = null;
+let worker, router, producerTransport, consumerTransports = [];
 
-let ffmpegProcess = null;
+// ✅ Initialize WebRTC Worker & Transport
+async function createMediasoupWorker() {
+    worker = await mediasoup.createWorker();
+    router = await worker.createRouter({
+        mediaCodecs: [{ kind: "video", mimeType: "video/vp8", clockRate: 90000 }],
+    });
 
-// **Start Streaming**
+    producerTransport = await router.createWebRtcTransport({
+        listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
+        enableUdp: true,
+        enableTcp: true,
+    });
+
+    console.log("✅ WebRTC Server Ready!");
+}
+
+// ✅ API: Start WebRTC Stream
 exports.startStream = async (req, res, io) => {
     try {
-        if (ffmpegProcess) {
-            console.log("⚠️ Stream is already running.");
+        if (producer) {
             return res.status(400).json({ success: false, message: "Stream is already running." });
         }
 
-        console.log("🚀 Starting FFmpeg stream...");
-
-        // ✅ Ensure HLS directory exists
-        if (!fs.existsSync(HLS_OUTPUT_DIR)) {
-            console.log(`⚠️ HLS directory not found. Creating: ${HLS_OUTPUT_DIR}`);
-            fs.mkdirSync(HLS_OUTPUT_DIR, { recursive: true });
-        } else {
-            console.log(`✅ HLS directory exists: ${HLS_OUTPUT_DIR}`);
-        }
-
-        // ✅ Optimized FFmpeg Streaming Command
-        ffmpegProcess = spawn("ffmpeg", [
-            "-re",
-            "-f", "webm",
-            "-i", "pipe:0",
-
-            // ✅ Optimized Video Encoding for Stability & Quality
-            "-c:v", "libx264",
-            "-preset", "superfast",  // ✅ Faster encoding, less CPU usage
-            "-tune", "zerolatency",
-            "-b:v", "3000k", // ✅ Slightly higher bitrate for quality
-            "-maxrate", "3000k",
-            "-bufsize", "6000k", // ✅ Increased buffer size for stability
-            "-pix_fmt", "yuv420p",
-            "-g", "60",  // ✅ Higher GOP for smooth playback (~2s latency)
-            "-r", "30",
-
-            // ✅ Optimized Audio Processing (Avoids Desync)
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ar", "44100",
-            "-ac", "2",
-
-            // ✅ HLS Output for 2-Second Latency & Stability
-            "-f", "hls",
-            "-hls_time", "1",        // ✅ Each segment is 1 second (total ~2s latency)
-            "-hls_list_size", "8",   // ✅ Keep last 8 segments (Ensures smooth transitions)
-            "-hls_flags", "delete_segments+append_list+independent_segments",
-            "-hls_segment_type", "fmp4",
-            "-hls_fmp4_init_filename", "init.mp4",
-            "-hls_allow_cache", "0",
-            "-hls_segment_filename", `${HLS_OUTPUT_DIR}/segment-%03d.m4s`,
-            HLS_PLAYLIST
-        ]);
-
-        console.log("🎥 FFmpeg started, waiting for WebRTC video input...");
-
-        ffmpegProcess.stderr.on("data", (data) => {
-            console.log(`FFmpeg Log: ${data}`);
-        });
-
-        ffmpegProcess.on("close", () => {
-            console.log("⚠️ FFmpeg process stopped.");
-            ffmpegProcess = null;
-        });
-
-        // ✅ Emit real-time stream status
+        console.log("🚀 Starting WebRTC stream...");
         io.emit("stream_status", { status: "started" });
 
-        return res.json({ success: true, message: "🎥 Streaming started!" });
+        return res.json({ success: true, message: "🎥 WebRTC Streaming started!" });
     } catch (error) {
         console.error("❌ Error starting stream:", error);
         return res.status(500).json({ success: false, message: "Failed to start streaming." });
     }
 };
 
-// ✅ Handle WebRTC Video Stream from Frontend (Optimized for Stability)
-exports.handleWebRTCStream = (socket) => {
-    socket.on("stream_data", (data) => {
-        if (ffmpegProcess) {
-            try {
-                ffmpegProcess.stdin.write(data); // ✅ Prevents buffering issues
-                console.log(`📡 Receiving WebRTC stream data (${data.length} bytes)`);
-            } catch (error) {
-                console.error("❌ FFmpeg input error:", error);
-            }
-        } else {
-            console.log("❌ No active FFmpeg process to handle WebRTC data.");
-        }
-    });
-};
-
-
-// **Stop Streaming**
+// ✅ API: Stop WebRTC Stream
 exports.stopStream = async (req, res, io) => {
     try {
-        if (!ffmpegProcess) {
-            console.log("❌ No active stream to stop.");
+        if (!producer) {
             return res.status(400).json({ success: false, message: "No active stream." });
         }
 
-        console.log("🛑 Stopping FFmpeg stream...");
-        ffmpegProcess.stdin.end();
-        ffmpegProcess.kill("SIGINT");
-        ffmpegProcess = null;
+        console.log("🛑 Stopping WebRTC stream...");
+        producer.close();
+        producer = null;
 
         io.emit("stream_status", { status: "stopped" });
 
@@ -117,4 +56,41 @@ exports.stopStream = async (req, res, io) => {
         console.error("❌ Error stopping stream:", error);
         return res.status(500).json({ success: false, message: "Failed to stop streaming." });
     }
+};
+
+// ✅ WebRTC Signaling (Socket.io)
+exports.handleWebRTCSignaling = (server, io) => {
+    ioInstance = new Server(server, { cors: { origin: "*" } });
+
+    ioInstance.on("connection", (socket) => {
+        console.log("🔗 New user connected:", socket.id);
+
+        socket.on("start_webrtc_stream", async ({ sdp }) => {
+            producer = await producerTransport.produce({ kind: "video", rtpParameters: sdp });
+            ioInstance.emit("stream_started", { sdp: producer.sdp });
+        });
+
+        socket.on("join_webrtc_stream", async () => {
+            if (!producer) return;
+            const consumerTransport = await router.createWebRtcTransport({
+                listenIps: [{ ip: "0.0.0.0", announcedIp: "145.223.75.230" }],
+                enableUdp: true,
+                enableTcp: true,
+            });
+
+            const consumer = await consumerTransport.consume({
+                producerId: producer.id,
+                rtpCapabilities: router.rtpCapabilities,
+            });
+
+            consumerTransports.push(consumerTransport);
+            socket.emit("stream_data", { sdp: consumer.sdp });
+        });
+
+        socket.on("disconnect", () => {
+            console.log("❌ User disconnected:", socket.id);
+        });
+    });
+
+    createMediasoupWorker();
 };
