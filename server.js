@@ -59,8 +59,8 @@ app.use("/stream", streamRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/uploads", express.static("uploads"));
 
-// **Initialize WebRTC Signaling**
-streamController.handleWebRTCSignaling(server, io);
+// ✅ Use `io` in WebRTC Signaling
+streamController.handleWebRTCSignaling(io);
 
 // **Socket.IO Connection**
 io.on("connection", (socket) => {

@@ -1,4 +1,3 @@
-const { Server } = require("socket.io");
 const mediasoup = require("mediasoup");
 
 let ioInstance = null;
@@ -58,9 +57,9 @@ exports.stopStream = async (req, res, io) => {
     }
 };
 
-// ✅ WebRTC Signaling (Socket.io)
-exports.handleWebRTCSignaling = (server, io) => {
-    ioInstance = new Server(server, { cors: { origin: "*" } });
+// ✅ WebRTC Signaling (Socket.io) - Use Existing `io` Instance
+exports.handleWebRTCSignaling = (io) => {
+    ioInstance = io; // ✅ Use existing `io` from `server.js`, no new Server instance
 
     ioInstance.on("connection", (socket) => {
         console.log("🔗 New user connected:", socket.id);
