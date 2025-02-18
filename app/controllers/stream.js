@@ -247,6 +247,7 @@ exports.consume = async (req, res) => {
             producerId: global.videoProducer.id,
             kind: consumer.kind,
             rtpParameters: consumer.rtpParameters,
+            track: consumer.track
         }, "Stream consumption started");
     } catch (error) {
         console.error("❌ Error consuming stream:", error);
