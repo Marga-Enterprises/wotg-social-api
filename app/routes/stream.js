@@ -3,35 +3,29 @@ const router = express.Router();
 const streamController = require("../controllers/stream");
 
 module.exports = (io) => {
-    // ✅ Initialize Mediasoup when the server starts
-    streamController.initializeMediasoup();
+    // Initialize WebRTC signaling
+    streamController.handleWebRTCSignaling(io);
 
-    // ✅ Start WebRTC Stream (Broadcaster)
-    router.post("/start", (req, res) => streamController.startStream(req, res, io));
+    // Start Mediasoup Worker & Router
+    // router.get("/start", streamController.initializeMediasoup);
 
-    // ✅ Stop WebRTC Stream
-    router.post("/stop", (req, res) => streamController.stopStream(req, res, io));
+    // Create WebRTC Transport (Producer/Consumer)
+    router.post("/create-transport", streamController.createTransport);
 
-    // ✅ Get RTP Capabilities for WebRTC negotiation
-    router.get("/rtpCapabilities", (req, res) => streamController.getRtpCapabilities(req, res));
+    // Connect WebRTC Transport
+    router.post("/connect-transport", streamController.connectTransport);
 
-    // ✅ Create Producer Transport (for Broadcasters)
-    router.post("/createProducerTransport", (req, res) => streamController.createProducerTransport(req, res));
+    // Start Producing (Streaming)
+    router.post("/produce", streamController.produce);
 
-    // ✅ Connect Producer Transport
-    router.post("/connectProducerTransport", (req, res) => streamController.connectProducerTransport(req, res));
+    // Start Consuming (Viewing)
+    router.post("/consume", streamController.consume);
 
-    // ✅ Produce (Start Sending Media)
-    router.post("/produce", (req, res) => streamController.produce(req, res));
+    // Stop Streaming
+    router.post("/stop", streamController.stopStream);
 
-    // ✅ Create Consumer Transport (for Viewers)
-    router.post("/createConsumerTransport", (req, res) => streamController.createConsumerTransport(req, res));
-
-    // ✅ Connect Consumer Transport
-    router.post("/connectConsumerTransport", (req, res) => streamController.connectConsumerTransport(req, res));
-
-    // ✅ Consume Stream (Viewers start watching)
-    router.post("/consume", (req, res) => streamController.consume(req, res));
+    // Check stream status
+    router.get("/status", streamController.checkStreamStatus);
 
     return router;
 };

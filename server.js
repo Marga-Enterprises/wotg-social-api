@@ -15,7 +15,7 @@ const messageRoutes = require("./app/routes/message");
 const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const meetingroomRoutes = require("./app/routes/meetingroom");
-const streamRoutes = require("./app/routes/stream"); // 🔥 Updated route file
+const streamRoutes = require("./app/routes/stream");
 
 const streamController = require("./app/controllers/stream");
 
@@ -49,7 +49,7 @@ webPush.setVapidDetails(
 app.use(express.json());
 app.use(cors());
 
-// ✅ Initialize Mediasoup (Starts the worker)
+// ✅ Initialize Mediasoup
 streamController.initializeMediasoup();
 
 // ✅ Use Routes
@@ -65,7 +65,7 @@ app.use("/uploads", express.static("uploads"));
 // ✅ WebRTC Signaling Handled by `streamController.js`
 streamController.handleWebRTCSignaling(io);
 
-// **Socket.IO Connection** (Keep this part in `server.js`)
+// **Socket.IO Connection** (For Chat & Other Features)
 io.on("connection", (socket) => {
     console.log(`🟢 User connected: ${socket.id}`);
 
