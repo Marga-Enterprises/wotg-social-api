@@ -133,12 +133,22 @@ exports.produce = async (req, res) => {
 
         console.log(`🚀 Producer Created - ID: ${producer.id} | Kind: ${kind}`);
 
+        // ✅ Store the producer in global state
+        if (kind === "video") {
+            global.videoProducer = producer;
+            console.log("✅ GLOBAL VIDEO PRODUCER SET:", global.videoProducer.id);
+        } else if (kind === "audio") {
+            global.audioProducer = producer;
+            console.log("✅ GLOBAL AUDIO PRODUCER SET:", global.audioProducer.id);
+        }
+
         return sendSuccess(res, { id: producer.id }, "Stream started successfully");
     } catch (error) {
         console.error("❌ Error producing stream:", error);
         return sendError(res, "Error producing stream", error.message);
     }
 };
+
 
 
 exports.stopStream = async (req, res) => {
