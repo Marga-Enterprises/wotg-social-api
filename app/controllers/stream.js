@@ -201,16 +201,18 @@ exports.consume = async (req, res) => {
         console.log("✅ Consuming Stream from Producer:", global.videoProducer.id);
 
         const { rtpCapabilities } = req.body;
+
+        console.log('RTP CAPABILITIES', rtpCapabilities)
         
         // ✅ Ensure router can consume
         if (!router.canConsume({ producerId: global.videoProducer.id, rtpCapabilities })) {
-            return sendError(res, "Cannot consume stream. Invalid RTP capabilities.");
+            return sendError(res, "Cannot consume stream. Invalid RTP capabilities.", null);
         }
 
         // ✅ Find the first available transport
         const transport = consumerTransports.length > 0 ? consumerTransports[0] : null;
         if (!transport) {
-            return sendError(res, "No available consumer transport.");
+            return sendError(res, "No available consumer transport.", null);
         }
 
         // ✅ Create consumer
@@ -237,20 +239,20 @@ exports.consume = async (req, res) => {
 
 exports.checkStreamStatus = async (req, res) => {
     try {
-        console.log("🔍 Checking Stream Status:", global.videoProducer ? "ACTIVE" : "INACTIVE");
-
-        console.log("GLOBAL VIDEO PRODUCER", global.videoProducer)
-
         if (!global.videoProducer) {
             return sendSuccess(res, { isLive: false }, "No live stream available.");
         }
 
-        return sendSuccess(res, { isLive: true }, "Live stream is active.");
+        return sendSuccess(res, { 
+            isLive: true, 
+            rtpCapabilities: router.rtpCapabilities // ✅ Include rtpCapabilities
+        }, "Live stream is active.");
     } catch (error) {
         console.error("❌ Error checking stream status:", error);
         return sendError(res, "Error checking stream status", error.message);
     }
 };
+
 
 
 /**
