@@ -192,25 +192,48 @@ exports.consume = async (req, res) => {
         let token = getToken(req.headers);
         if (!token) return sendErrorUnauthorized(res, "Unauthorized request. Token is missing.");
 
-        const { rtpCapabilities } = req.body;
-        if (!router.canConsume({ producerId: producer.id, rtpCapabilities })) {
-            return sendError(res, "Cannot consume stream. Invalid capabilities.");
+        // ✅ Check if a video producer exists
+        if (!global.videoProducer) {
+            console.warn("⚠ No active video producer found!");
+            return sendSuccess(res, { isLive: false }, "No live stream available.");
         }
 
-        const transport = consumerTransports[0];
-        const consumer = await transport.consume({ producerId: producer.id, rtpCapabilities });
+        console.log("✅ Consuming Stream from Producer:", global.videoProducer.id);
 
-        return sendSuccess(res, "Stream consumption started", {
+        const { rtpCapabilities } = req.body;
+        
+        // ✅ Ensure router can consume
+        if (!router.canConsume({ producerId: global.videoProducer.id, rtpCapabilities })) {
+            return sendError(res, "Cannot consume stream. Invalid RTP capabilities.");
+        }
+
+        // ✅ Find the first available transport
+        const transport = consumerTransports.length > 0 ? consumerTransports[0] : null;
+        if (!transport) {
+            return sendError(res, "No available consumer transport.");
+        }
+
+        // ✅ Create consumer
+        const consumer = await transport.consume({
+            producerId: global.videoProducer.id,
+            rtpCapabilities,
+            paused: false
+        });
+
+        console.log(`✅ Consumer Created - ID: ${consumer.id}`);
+
+        return sendSuccess(res, {
             id: consumer.id,
-            producerId: producer.id,
+            producerId: global.videoProducer.id,
             kind: consumer.kind,
             rtpParameters: consumer.rtpParameters,
-        });
+        }, "Stream consumption started");
     } catch (error) {
         console.error("❌ Error consuming stream:", error);
-        return sendError(res, "Error consuming stream", error);
+        return sendError(res, "Error consuming stream", error.message);
     }
 };
+
 
 exports.checkStreamStatus = async (req, res) => {
     try {
