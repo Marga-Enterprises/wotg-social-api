@@ -204,6 +204,10 @@ exports.consume = async (req, res) => {
 
 exports.checkStreamStatus = async (req, res) => {
     try {
+        console.log("🔍 Checking Stream Status:", global.videoProducer ? "ACTIVE" : "INACTIVE");
+
+        console.log("GLOBAL VIDEO PRODUCER", global.videoProducer)
+
         if (!global.videoProducer) {
             return sendSuccess(res, { isLive: false }, "No live stream available.");
         }
