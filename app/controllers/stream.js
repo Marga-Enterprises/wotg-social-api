@@ -48,12 +48,21 @@ exports.createTransport = async (req, res) => {
 
         const { role } = req.body;
 
-        // ✅ Create WebRTC Transport
+        // ✅ Create WebRTC Transport with ICE Servers
         const transport = await router.createWebRtcTransport({
             listenIps: [{ ip: "0.0.0.0", announcedIp: process.env.PUBLIC_IP }],
             enableUdp: true,
             enableTcp: true,
             preferUdp: true,
+            enableSctp: true, // ✅ Enable SCTP (for WebRTC DataChannel support)
+            iceServers: [
+                { urls: "stun:meet.wotgonline.com:3478" }, // ✅ Use Jitsi's STUN
+                { 
+                    urls: "turns:meet.wotgonline.com:5349", 
+                    username: "webrtcuser", 
+                    credential: "securepassword" 
+                } // ✅ Use Jitsi's TURN for relay
+            ],
         });
 
         if (role === "producer") producerTransport = transport;
