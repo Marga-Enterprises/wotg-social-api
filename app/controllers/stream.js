@@ -203,11 +203,11 @@ exports.consume = async (req, res) => {
         const { rtpCapabilities, dtlsParameters } = req.body;
 
         if (!rtpCapabilities) {
-            return sendError(res, "Missing RTP capabilities.", null);
+            return sendError(res, null, "Missing RTP capabilities.");
         }
 
         if (!dtlsParameters || !dtlsParameters.fingerprints) {
-            return sendError(res, "Missing DTLS parameters.", null);
+            return sendError(res, null, "Missing DTLS parameters.");
         }
 
         console.log('RTP CAPABILITIES:', rtpCapabilities);
