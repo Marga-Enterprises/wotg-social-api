@@ -206,6 +206,8 @@ exports.consume = async (req, res) => {
             return sendError(res, null, "Missing RTP capabilities.");
         }
 
+        console.log('DTLS PARAMS', dtlsParameters);
+
         if (!dtlsParameters || !dtlsParameters.fingerprints) {
             return sendError(res, null, "Missing DTLS parameters.");
         }
