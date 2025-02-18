@@ -200,26 +200,32 @@ exports.consume = async (req, res) => {
 
         console.log("✅ Consuming Stream from Producer:", global.videoProducer.id);
 
-        const { rtpCapabilities } = req.body;
+        const { rtpCapabilities, dtlsParameters } = req.body;
+        console.log('RTP CAPABILITIES:', rtpCapabilities);
 
-        console.log('RTP CAPABILITIES', rtpCapabilities)
-        
         // ✅ Ensure router can consume
         if (!router.canConsume({ producerId: global.videoProducer.id, rtpCapabilities })) {
             return sendError(res, "Cannot consume stream. Invalid RTP capabilities.", null);
         }
 
-        // ✅ Find the first available transport
-        const transport = consumerTransports.length > 0 ? consumerTransports[0] : null;
-        if (!transport) {
-            return sendError(res, "No available consumer transport.", null);
-        }
+        // ✅ Create a transport for this viewer
+        const transport = await router.createWebRtcTransport({
+            listenIps: [{ ip: "0.0.0.0", announcedIp: process.env.PUBLIC_IP }],
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+        });
+
+        consumerTransports.push(transport);
+
+        // ✅ Connect transport
+        await transport.connect({ dtlsParameters });
 
         // ✅ Create consumer
         const consumer = await transport.consume({
             producerId: global.videoProducer.id,
             rtpCapabilities,
-            paused: false
+            paused: false,
         });
 
         console.log(`✅ Consumer Created - ID: ${consumer.id}`);
@@ -235,6 +241,7 @@ exports.consume = async (req, res) => {
         return sendError(res, "Error consuming stream", error.message);
     }
 };
+
 
 
 exports.checkStreamStatus = async (req, res) => {
