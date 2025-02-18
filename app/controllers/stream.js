@@ -201,7 +201,17 @@ exports.consume = async (req, res) => {
         console.log("✅ Consuming Stream from Producer:", global.videoProducer.id);
 
         const { rtpCapabilities, dtlsParameters } = req.body;
+
+        if (!rtpCapabilities) {
+            return sendError(res, "Missing RTP capabilities.", null);
+        }
+
+        if (!dtlsParameters || !dtlsParameters.fingerprints) {
+            return sendError(res, "Missing DTLS parameters.", null);
+        }
+
         console.log('RTP CAPABILITIES:', rtpCapabilities);
+        console.log('DTLS PARAMETERS:', dtlsParameters);
 
         // ✅ Ensure router can consume
         if (!router.canConsume({ producerId: global.videoProducer.id, rtpCapabilities })) {
@@ -218,7 +228,7 @@ exports.consume = async (req, res) => {
 
         consumerTransports.push(transport);
 
-        // ✅ Connect transport
+        // ✅ Connect transport only if dtlsParameters are valid
         await transport.connect({ dtlsParameters });
 
         // ✅ Create consumer
@@ -241,6 +251,7 @@ exports.consume = async (req, res) => {
         return sendError(res, "Error consuming stream", error.message);
     }
 };
+
 
 
 
