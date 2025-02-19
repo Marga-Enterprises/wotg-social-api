@@ -129,16 +129,21 @@ exports.produce = async (req, res) => {
             return sendError(res, "Error producing stream", "Producer transport not initialized");
         }
 
+        // ✅ Produce media track
         const producer = await producerTransport.produce({ kind, rtpParameters });
 
         console.log(`🚀 Producer Created - ID: ${producer.id} | Kind: ${kind}`);
 
-        // ✅ Store the producer in global state
+        // ✅ Store the producer in global state with its track
         if (kind === "video") {
             global.videoProducer = producer;
+            global.videoTrack = producer.track;
+            console.log("GLOBAL VIDEO TRACK", global.videoTrack);
+            console.log('PROD VIDEO PRODUCER', producer.track);
             console.log("✅ GLOBAL VIDEO PRODUCER SET:", global.videoProducer.id);
         } else if (kind === "audio") {
             global.audioProducer = producer;
+            global.audioTrack = producer.track;
             console.log("✅ GLOBAL AUDIO PRODUCER SET:", global.audioProducer.id);
         }
 
@@ -148,6 +153,7 @@ exports.produce = async (req, res) => {
         return sendError(res, "Error producing stream", error.message);
     }
 };
+
 
 
 
@@ -192,7 +198,6 @@ exports.consume = async (req, res) => {
         let token = getToken(req.headers);
         if (!token) return sendErrorUnauthorized(res, "Unauthorized request. Token is missing.");
 
-        // ✅ Check if a video producer exists
         if (!global.videoProducer) {
             console.warn("⚠ No active video producer found!");
             return sendSuccess(res, { isLive: false }, "No live stream available.");
@@ -203,24 +208,19 @@ exports.consume = async (req, res) => {
         const { rtpCapabilities, dtlsParameters } = req.body;
 
         if (!rtpCapabilities) {
-            return sendError(res, null, "Missing RTP capabilities.");
+            return sendError(res, "Missing RTP capabilities.", null);
         }
-
-        console.log('DTLS PARAMS', dtlsParameters);
 
         if (!dtlsParameters || !dtlsParameters.fingerprints) {
-            return sendError(res, null, "Missing DTLS parameters.");
+            return sendError(res, "Missing DTLS parameters.", null);
         }
-
-        console.log('RTP CAPABILITIES:', rtpCapabilities);
-        console.log('DTLS PARAMETERS:', dtlsParameters);
 
         // ✅ Ensure router can consume
         if (!router.canConsume({ producerId: global.videoProducer.id, rtpCapabilities })) {
             return sendError(res, "Cannot consume stream. Invalid RTP capabilities.", null);
         }
 
-        // ✅ Create a transport for this viewer
+        // ✅ Create a WebRTC transport for the consumer
         const transport = await router.createWebRtcTransport({
             listenIps: [{ ip: "0.0.0.0", announcedIp: process.env.PUBLIC_IP }],
             enableUdp: true,
@@ -230,24 +230,24 @@ exports.consume = async (req, res) => {
 
         consumerTransports.push(transport);
 
-        // ✅ Connect transport only if dtlsParameters are valid
+        // ✅ Connect consumer transport
         await transport.connect({ dtlsParameters });
 
-        // ✅ Create consumer
+        // ✅ Create the consumer
         const consumer = await transport.consume({
             producerId: global.videoProducer.id,
             rtpCapabilities,
-            paused: false,
+            paused: false, // Automatically play
         });
 
-        console.log(`✅ Consumer Created - ID: ${consumer.id}`);
+        console.log(`✅ Consumer Created - ID: ${consumer.id}, Track: ${consumer.track?.kind || "undefined"}`, global.videoTrack);
 
         return sendSuccess(res, {
             id: consumer.id,
             producerId: global.videoProducer.id,
             kind: consumer.kind,
             rtpParameters: consumer.rtpParameters,
-            track: consumer.track
+            track: global.videoTrack, // ✅ Return the track explicitly
         }, "Stream consumption started");
     } catch (error) {
         console.error("❌ Error consuming stream:", error);

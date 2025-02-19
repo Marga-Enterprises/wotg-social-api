@@ -37,39 +37,42 @@ exports.loginUser = async (req, res) => {
       return sendErrorUnauthorized(res, '', 'User not found.');
     }
 
+    // Ensure the password is stored as a hash
+    if (!user.password) {
+      return sendErrorUnauthorized(res, '', 'User password is not set.');
+    }
+
     // Check if the password matches
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return sendErrorUnauthorized(res, '', 'Password Incorrect.');
     }
 
-    // Define the chatroomId (already existing chatroom)
-    const chatroomId = process.env.NODE_ENV === 'development' ? 37 : 5; // Existing group chat ID
+    // Define chatroom IDs based on environment
+    const chatroomIds = process.env.NODE_ENV === 'development' ? [37, 40] : [5, 7];
 
-    // Check if the chatroom exists
-    const chatroom = await Chatroom.findByPk(chatroomId);
-    if (!chatroom) {
-      return sendError(res, '', `Chatroom with ID ${chatroomId} does not exist.`);
-    }
+    // Check if chatrooms exist and add user as a participant if not already added
+    for (const chatroomId of chatroomIds) {
+      const chatroom = await Chatroom.findByPk(chatroomId);
 
-    // Check if the logged-in user is already a participant in the chatroom
-    const isAlreadyParticipant = await Participant.findOne({
-      where: { chatRoomId: chatroomId, userId: user.id },
-    });
+      if (!chatroom) {
+        console.warn(`Chatroom with ID ${chatroomId} does not exist. Skipping.`);
+        continue; // Skip this chatroom if not found
+      }
 
-    // If not a participant, add the user to the chatroom
-    if (!isAlreadyParticipant) {
-      await Participant.create({
-        chatRoomId: chatroomId,
-        userId: user.id,
-        userName: `${user.user_fname} ${user.user_lname}`,
+      const [participant, created] = await Participant.findOrCreate({
+        where: { chatRoomId: chatroomId, userId: user.id },
+        defaults: { userName: `${user.user_fname} ${user.user_lname}` },
       });
-      console.log(`User ${user.id} added to chatroomId: ${chatroomId}`);
-    } else {
-      console.log(`User ${user.id} is already a participant of chatroomId: ${chatroomId}`);
+
+      if (created) {
+        console.log(`User ${user.id} added to chatroomId: ${chatroomId}`);
+      } else {
+        console.log(`User ${user.id} is already a participant of chatroomId: ${chatroomId}`);
+      }
     }
 
-    // Generate JWT token
+    // Generate JWT token with safer expiration
     const token = jwt.sign(
       {
         user: {
@@ -82,10 +85,10 @@ exports.loginUser = async (req, res) => {
         },
       },
       process.env.JWT_SECRET,
-      { expiresIn: '1y' }
+      { expiresIn: '30d' } // Reduced expiration time
     );
 
-    // Send the response with user details and token
+    // Send response with token
     return sendSuccess(res, { token });
   } catch (err) {
     console.error('Sequelize error:', err);
