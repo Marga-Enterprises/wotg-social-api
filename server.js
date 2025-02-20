@@ -16,6 +16,7 @@ const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const meetingroomRoutes = require("./app/routes/meetingroom");
 const streamRoutes = require("./app/routes/stream");
+const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
 
 const streamController = require("./app/controllers/stream");
 
@@ -60,6 +61,7 @@ app.use("/messages", messageRoutes(io));
 app.use("/meetingrooms", meetingroomRoutes(io));
 app.use("/stream", streamRoutes(io)); // 🔥 WebRTC API routes
 app.use("/subscriptions", subscriptionRoutes);
+app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/uploads", express.static("uploads"));
 
 // ✅ WebRTC Signaling Handled by `streamController.js`
