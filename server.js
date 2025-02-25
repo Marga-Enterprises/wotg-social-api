@@ -67,10 +67,34 @@ app.use("/uploads", express.static("uploads"));
 // ✅ WebRTC Signaling Handled by `streamController.js`
 streamController.handleWebRTCSignaling(io);
 
-// **Socket.IO Connection** (For Chat & Other Features)
+// **Live Viewer Count for Worship Page**
+let liveViewers = 0; // Track active viewers
+
 io.on("connection", (socket) => {
     console.log(`🟢 User connected: ${socket.id}`);
 
+    // Join worship viewer count
+    socket.on("join_worship", () => {
+        liveViewers++; // Increase count
+        io.emit("update_viewers", liveViewers); // Broadcast to all users
+        console.log(`User joined worship. Viewers: ${liveViewers}`);
+    });
+
+    // Leave worship viewer count
+    socket.on("leave_worship", () => {
+        if (liveViewers > 0) liveViewers--; // Decrease count
+        io.emit("update_viewers", liveViewers); // Broadcast to all users
+        console.log(`User left worship. Viewers: ${liveViewers}`);
+    });
+
+    // Handle disconnect (counts as leaving worship)
+    socket.on("disconnect", () => {
+        if (liveViewers > 0) liveViewers--;
+        io.emit("update_viewers", liveViewers);
+        console.log(`🔴 User disconnected. Viewers: ${liveViewers}`);
+    });
+
+    // **Chatroom Features**
     socket.on("join_room", (room) => {
         socket.join(room);
         console.log(`User ${socket.id} joined room ${room}`);
@@ -79,10 +103,6 @@ io.on("connection", (socket) => {
     socket.on("leave_room", (room) => {
         socket.leave(room);
         console.log(`User ${socket.id} left room ${room}`);
-    });
-
-    socket.on("disconnect", () => {
-        console.log(`🔴 User disconnected: ${socket.id}`);
     });
 });
 
