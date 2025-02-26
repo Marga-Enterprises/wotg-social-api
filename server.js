@@ -15,10 +15,7 @@ const messageRoutes = require("./app/routes/message");
 const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const meetingroomRoutes = require("./app/routes/meetingroom");
-const streamRoutes = require("./app/routes/stream");
 const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
-
-const streamController = require("./app/controllers/stream");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -50,8 +47,6 @@ webPush.setVapidDetails(
 app.use(express.json());
 app.use(cors());
 
-// ✅ Initialize Mediasoup
-streamController.initializeMediasoup();
 
 // ✅ Use Routes
 app.use("/auth", authRoutes);
@@ -59,36 +54,33 @@ app.use("/users", userRoutes);
 app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
 app.use("/meetingrooms", meetingroomRoutes(io));
-app.use("/stream", streamRoutes(io)); // 🔥 WebRTC API routes
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/uploads", express.static("uploads"));
 
-// ✅ WebRTC Signaling Handled by `streamController.js`
-streamController.handleWebRTCSignaling(io);
 
 // **Live Viewer Count for Worship Page**
 let liveViewers = 0; // Track active viewers
 
 io.on("connection", (socket) => {
-    console.log(`🟢 User connected: ${socket.id}`);
+    // console.log(`🟢 User connected: ${socket.id}`);
 
     // **Live Viewer Count for Worship Page**
     socket.on("join_worship", () => {
         liveViewers++;
         io.emit("update_viewers", liveViewers);
-        console.log(`User joined worship. Viewers: ${liveViewers}`);
+        // console.log(`User joined worship. Viewers: ${liveViewers}`);
     });
 
     socket.on("leave_worship", () => {
         if (liveViewers > 0) liveViewers--;
         io.emit("update_viewers", liveViewers);
-        console.log(`User left worship. Viewers: ${liveViewers}`);
+        // console.log(`User left worship. Viewers: ${liveViewers}`);
     });
 
     // **New Feature: Real-Time Floating Reactions**
     socket.on("send_reaction", (reaction) => {
-        console.log(`💬 Reaction received: ${reaction}`);
+        // console.log(`💬 Reaction received: ${reaction}`);
 
         // Broadcast to all users
         io.emit("new_reaction", reaction);
@@ -98,18 +90,18 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         if (liveViewers > 0) liveViewers--;
         io.emit("update_viewers", liveViewers);
-        console.log(`🔴 User disconnected. Viewers: ${liveViewers}`);
+        // console.log(`🔴 User disconnected. Viewers: ${liveViewers}`);
     });
 
     // **Chatroom Features**
     socket.on("join_room", (room) => {
         socket.join(room);
-        console.log(`User ${socket.id} joined room ${room}`);
+        // console.log(`User ${socket.id} joined room ${room}`);
     });
 
     socket.on("leave_room", (room) => {
         socket.leave(room);
-        console.log(`User ${socket.id} left room ${room}`);
+        // console.log(`User ${socket.id} left room ${room}`);
     });
 });
 

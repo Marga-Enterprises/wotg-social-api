@@ -56,7 +56,7 @@ exports.loginUser = async (req, res) => {
       const chatroom = await Chatroom.findByPk(chatroomId);
 
       if (!chatroom) {
-        console.warn(`Chatroom with ID ${chatroomId} does not exist. Skipping.`);
+        // console.warn(`Chatroom with ID ${chatroomId} does not exist. Skipping.`);
         continue; // Skip this chatroom if not found
       }
 
@@ -64,12 +64,6 @@ exports.loginUser = async (req, res) => {
         where: { chatRoomId: chatroomId, userId: user.id },
         defaults: { userName: `${user.user_fname} ${user.user_lname}` },
       });
-
-      if (created) {
-        console.log(`User ${user.id} added to chatroomId: ${chatroomId}`);
-      } else {
-        console.log(`User ${user.id} is already a participant of chatroomId: ${chatroomId}`);
-      }
     }
 
     // Generate JWT token with safer expiration

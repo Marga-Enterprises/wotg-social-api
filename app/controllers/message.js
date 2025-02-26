@@ -256,7 +256,7 @@ exports.sendMessage = async (req, res, io) => {
             
                             // Remove invalid/expired subscriptions
                             if (error.statusCode === 410) { // "Gone" status
-                                console.log('Removing expired subscription:', subscription.deviceId);
+                                // console.log('Removing expired subscription:', subscription.deviceId);
                                 await Subscription.destroy({ where: { id: subscription.id } });
                             }
                         }

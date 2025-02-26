@@ -196,9 +196,6 @@ exports.createChatroom = async (req, res, io) => {
                     group: ['chatRoomId'], // Group by chatRoomId
                     having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure exactly 2 participants in the same chatroom
                 });
-                                       
-                
-                console.log('[[[[[[[[[[[[[[existingChatroom]]]]]]]]]]]]]]', existingChatroom);
 
                 if (existingChatroom.length > 0) {
                     // Return an error if a chatroom already exists for these participants
@@ -411,7 +408,6 @@ exports.updateChatroom = async (req, res, io) => {
 
             return sendSuccess(res, updatedChatroom, "Chatroom updated successfully.");
         } catch (error) {
-            console.log('[[[[[[[[[ERRRORRRRRR]]]]]]]]]', error);
             return sendError(res, error, "Failed to update chatroom.");
         }
     });
