@@ -73,21 +73,28 @@ let liveViewers = 0; // Track active viewers
 io.on("connection", (socket) => {
     console.log(`🟢 User connected: ${socket.id}`);
 
-    // Join worship viewer count
+    // **Live Viewer Count for Worship Page**
     socket.on("join_worship", () => {
-        liveViewers++; // Increase count
-        io.emit("update_viewers", liveViewers); // Broadcast to all users
+        liveViewers++;
+        io.emit("update_viewers", liveViewers);
         console.log(`User joined worship. Viewers: ${liveViewers}`);
     });
 
-    // Leave worship viewer count
     socket.on("leave_worship", () => {
-        if (liveViewers > 0) liveViewers--; // Decrease count
-        io.emit("update_viewers", liveViewers); // Broadcast to all users
+        if (liveViewers > 0) liveViewers--;
+        io.emit("update_viewers", liveViewers);
         console.log(`User left worship. Viewers: ${liveViewers}`);
     });
 
-    // Handle disconnect (counts as leaving worship)
+    // **New Feature: Real-Time Floating Reactions**
+    socket.on("send_reaction", (reaction) => {
+        console.log(`💬 Reaction received: ${reaction}`);
+
+        // Broadcast to all users
+        io.emit("new_reaction", reaction);
+    });
+
+    // Handle disconnect
     socket.on("disconnect", () => {
         if (liveViewers > 0) liveViewers--;
         io.emit("update_viewers", liveViewers);
