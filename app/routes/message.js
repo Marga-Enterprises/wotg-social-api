@@ -6,6 +6,6 @@ module.exports = (io) => {
 
     router.get('/:chatroomId', (req, res) => messageController.getMessagesByChatroom(req, res, io));
     router.post('/', (req, res) => messageController.sendMessage(req, res, io));
-
+    router.post('/react', (req, res) => messageController.reactToMessage(req, res, io));
     return router;
 };

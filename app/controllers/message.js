@@ -3,6 +3,7 @@ const Chatroom = require('../models/Chatroom'); // Import Message model
 const Subscription = require('../models/Subscription'); // Import Message model
 const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
+const MessageReact = require('../models/MessageReactions'); // Import Message model
 const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
 const upload = require('./upload');
@@ -54,7 +55,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                 return sendError(res, null, "Chatroom not found.");
             }
 
-            // Fetch messages from the chatroom
+            // Fetch messages from the chatroom **including reactions**
             const messages = await Message.findAll({
                 where: { chatroomId },
                 include: [
@@ -62,6 +63,18 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                         model: User,
                         as: 'sender',
                         attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'], // Fetch only the necessary fields
+                    },
+                    {
+                        model: MessageReact, // Include reactions
+                        as: 'reactions',
+                        include: [
+                            {
+                                model: User,
+                                as: 'user',
+                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                            },
+                        ],
+                        attributes: ['id', 'react', 'userId', 'messageId', 'createdAt'],
                     },
                 ],
                 order: [['createdAt', 'DESC']], // Order messages by createdAt in ascending order
@@ -123,7 +136,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
 
             return sendSuccess(res, {
                 chatroom, // Include chatroom details
-                messages, // Include messages
+                messages, // Include messages with reactions
             });
         } catch (error) {
             console.error('Error fetching messages:', error);
@@ -133,8 +146,6 @@ exports.getMessagesByChatroom = async (req, res, io) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
-
-
 
 
 // Save a new message and broadcast it
@@ -277,7 +288,52 @@ exports.sendMessage = async (req, res, io) => {
     });
 };
 
+exports.reactToMessage = async (req, res, io) => {
+    const token = getToken(req.headers);
+    if (!token) {
+        return sendErrorUnauthorized(res, '', 'Please login first.');
+    }
 
+    const userDecoded = decodeToken(token);
+
+    const userId = userDecoded.user.id;
+
+    const { messageId, react } = req.body;
+
+    try {
+        const message = await Message.findOne({ where: { id: messageId } });
+
+        if (!message) {
+            return sendError(res, null, 'Message not found.', 404);
+        }
+
+        const reaction = await MessageReact.create({
+            messageId,
+            userId,
+            react,
+        });
+
+        const fullReaction = await MessageReact.findOne({
+            where: { id: reaction.id },
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                },
+            ],
+        });
+
+        if (io) {
+            io.to(message.chatroomId).emit('new_message_reaction', fullReaction);
+        }
+
+        return sendSuccess(res, fullReaction);
+    } catch (error) {
+        console.error('Error reacting to message:', error);
+        return sendError(res, error, 'Failed to react to message.', 500);
+    }
+};
 
 
 
