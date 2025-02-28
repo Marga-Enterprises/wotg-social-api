@@ -60,50 +60,94 @@ app.use("/uploads", express.static("uploads"));
 
 
 // **Live Viewer Count for Worship Page**
-let liveViewers = 0; // Track active viewers
+let viewersMap = {}; // Store unique viewers by user email
 
 io.on("connection", (socket) => {
-    // console.log(`🟢 User connected: ${socket.id}`);
+    console.log(`🟢 User connected: ${socket.id}`);
 
     // **Live Viewer Count for Worship Page**
-    socket.on("join_worship", () => {
-        liveViewers++;
-        io.emit("update_viewers", liveViewers);
-        // console.log(`User joined worship. Viewers: ${liveViewers}`);
+    socket.on("join_worship", (user) => {
+        if (!user || !user.email) return; // Ensure user is authenticated
+
+        // Add user to viewers map (avoid duplicates)
+        if (!viewersMap[user.email]) {
+            viewersMap[user.email] = {
+                sockets: new Set(),
+                fullName: `${user.user_fname} ${user.user_lname}`.trim(), // Store full name
+                email: user.email,
+            };
+        }
+        viewersMap[user.email].sockets.add(socket.id);
+
+        // Broadcast updated viewer count and list
+        updateViewerCount(io);
     });
 
-    socket.on("leave_worship", () => {
-        if (liveViewers > 0) liveViewers--;
-        io.emit("update_viewers", liveViewers);
-        // console.log(`User left worship. Viewers: ${liveViewers}`);
+    socket.on("leave_worship", (user) => {
+        if (!user || !user.email) return; // Ensure user is authenticated
+
+        // Remove this specific socket ID from the user's set
+        if (viewersMap[user.email]) {
+            viewersMap[user.email].sockets.delete(socket.id);
+
+            // If the user has no open tabs/devices left, remove them completely
+            if (viewersMap[user.email].sockets.size === 0) {
+                delete viewersMap[user.email];
+            }
+        }
+
+        // Broadcast updated viewer count and list
+        updateViewerCount(io);
+    });
+
+    // Handle user disconnect (when closing tab, refresh, or lost connection)
+    socket.on("disconnect", () => {
+        for (const email in viewersMap) {
+            if (viewersMap[email].sockets.has(socket.id)) {
+                viewersMap[email].sockets.delete(socket.id);
+                if (viewersMap[email].sockets.size === 0) {
+                    delete viewersMap[email];
+                }
+                break;
+            }
+        }
+
+        // Broadcast updated viewer count and list
+        updateViewerCount(io);
     });
 
     // **New Feature: Real-Time Floating Reactions**
     socket.on("send_reaction", (reaction) => {
-        // console.log(`💬 Reaction received: ${reaction}`);
-
-        // Broadcast to all users
         io.emit("new_reaction", reaction);
-    });
-
-    // Handle disconnect
-    socket.on("disconnect", () => {
-        if (liveViewers > 0) liveViewers--;
-        io.emit("update_viewers", liveViewers);
-        // console.log(`🔴 User disconnected. Viewers: ${liveViewers}`);
     });
 
     // **Chatroom Features**
     socket.on("join_room", (room) => {
         socket.join(room);
-        // console.log(`User ${socket.id} joined room ${room}`);
     });
 
     socket.on("leave_room", (room) => {
         socket.leave(room);
-        // console.log(`User ${socket.id} left room ${room}`);
     });
+
+    // Function to update and broadcast viewer count and list
+    function updateViewerCount(io) {
+        const viewersArray = Object.values(viewersMap).map((viewer) => ({
+            fullName: viewer.fullName,
+            email: viewer.email,
+        }));
+
+        io.emit("update_viewers", { count: viewersArray.length, viewers: viewersArray });
+    }
 });
+
+
+// Function to update and broadcast viewer count and list
+function updateViewerCount(io) {
+    const uniqueViewers = Object.keys(viewersMap); // Get unique logged-in viewers
+    io.emit("update_viewers", { count: uniqueViewers.length, viewers: uniqueViewers });
+}
+
 
 // ✅ Sync Database
 sequelize
