@@ -295,24 +295,37 @@ exports.reactToMessage = async (req, res, io) => {
     }
 
     const userDecoded = decodeToken(token);
-
     const userId = userDecoded.user.id;
-
     const { messageId, react } = req.body;
 
     try {
-        const message = await Message.findOne({ where: { id: messageId } });
+        // Fetch the message and its sender
+        const message = await Message.findOne({ 
+            where: { id: messageId },
+            include: [{ 
+                model: User, 
+                as: 'sender', 
+                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] 
+            }]
+        });
 
         if (!message) {
             return sendError(res, null, 'Message not found.', 404);
         }
 
+        // Prevent user from reacting to their own message (optional)
+        if (message.sender.id === userId) {
+            return sendError(res, null, "You can't react to your own message.", 400);
+        }
+
+        // Create reaction
         const reaction = await MessageReact.create({
             messageId,
             userId,
             react,
         });
 
+        // Fetch full reaction details with user info
         const fullReaction = await MessageReact.findOne({
             where: { id: reaction.id },
             include: [
@@ -324,8 +337,55 @@ exports.reactToMessage = async (req, res, io) => {
             ],
         });
 
+        // Emit real-time event for the reaction
         if (io) {
             io.to(message.chatroomId).emit('new_message_reaction', fullReaction);
+        }
+
+        // ✅ SEND PUSH NOTIFICATION TO MESSAGE SENDER (not the reacter)
+        const subscriptions = await Subscription.findAll({
+            where: { userId: message.sender.id }, // Ensure only the sender gets the notification
+        });
+
+        if (subscriptions.length > 0) {
+            // Reaction emoji mapping
+            const reactionEmojis = {
+                "heart": "❤️",
+                "pray": "🙏",
+                "praise": "🙌",
+                "clap": "👏"
+            };
+
+            const reactionEmoji = reactionEmojis[react] || ""; // Default to empty if reaction is unknown
+
+            const notificationPayload = JSON.stringify({
+                title: 'WOTG Community',
+                body: `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`,
+                icon: fullReaction.user.user_profile_picture
+                    ? `/uploads/${fullReaction.user.user_profile_picture}`
+                    : null,
+            });
+
+            // Send notifications to all subscribed devices of the sender
+            const sendPromises = subscriptions.map(async (subscription) => {
+                const subscriptionObject = 
+                    process.env.NODE_ENV === 'development' 
+                    ? JSON.parse(subscription.subscription) 
+                    : subscription.subscription;
+                
+                try {
+                    await webPush.sendNotification(subscriptionObject, notificationPayload);
+                } catch (error) {
+                    console.error('Error sending push notification:', error);
+
+                    // Remove invalid/expired subscriptions
+                    if (error.statusCode === 410) { // "Gone" status
+                        await Subscription.destroy({ where: { id: subscription.id } });
+                    }
+                }
+            });
+
+            await Promise.all(sendPromises);
         }
 
         return sendSuccess(res, fullReaction);
@@ -334,6 +394,9 @@ exports.reactToMessage = async (req, res, io) => {
         return sendError(res, error, 'Failed to react to message.', 500);
     }
 };
+
+
+
 
 
 
