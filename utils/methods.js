@@ -6,7 +6,7 @@ const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
 
-const secretKey = 'your-secret-key';
+const secretKey = process.env.JWT_SECRET;
 
 const randomAuthor = () => {
   const l = authors[Math.floor(Math.random() * authors.length)];

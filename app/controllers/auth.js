@@ -92,69 +92,72 @@ exports.loginUser = async (req, res) => {
 
 
 exports.createUser = async (req, res) => {
-    const { 
+  const { user_fname, user_lname, email, password, user_gender = null } = req.body;
+
+  if (!user_fname || !user_lname || !email || !password) {
+    return sendErrorBadRequest(res, {}, 'All required fields must be filled.', 400, 101);
+  }
+
+  if (!validator.isEmail(email)) {
+    return sendErrorBadRequest(res, {}, 'Invalid email format.', 400, 102);
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const [newUser, created] = await User.findOrCreate({
+      where: { email },
+      defaults: { 
         user_fname, 
         user_lname, 
-        email, 
-        password, 
-        user_gender = null,  // Gender is optional, default to null
-    } = req.body;
+        password: hashedPassword, 
+        user_role: 'member', 
+        user_gender 
+      }
+    });
 
-    // Validate required fields
-    if (!user_fname || !user_lname || !email || !password) {
-        return sendErrorUnauthorized(res, {}, 'First name, last name, email, and password are required.', 400, 101);
+    if (!created) {
+      return sendErrorUnauthorized(res, {}, 'Email is already in use.', 400, 103);
     }
 
-    // Validate email format
-    if (!validator.isEmail(email)) {
-        return sendErrorUnauthorized(res, {}, 'Invalid email format.', 400, 102);
+    // Define chatroom IDs based on environment
+    const chatroomIds = process.env.NODE_ENV === 'development' ? [37, 40] : [5, 7];
+
+    // Fetch chatrooms in one query
+    const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
+
+    // Add the user to chatrooms as a participant
+    for (const chatroom of chatrooms) {
+      await Participant.findOrCreate({
+        where: { chatRoomId: chatroom.id, userId: newUser.id },
+        defaults: { userName: `${newUser.user_fname} ${newUser.user_lname}` }
+      });
     }
 
-    // Check if email is already used
-    try {
-        const existingUser = await User.findOne({ where: { email } });
-        if (existingUser) {
-            return sendErrorUnauthorized(res, {}, 'Email is already in use.', 400, 103);
-        }
-    } catch (err) {
-        console.error('Database query error:', err);
-        return res.status(500).json({ error: 'Internal server error.' }); // Standard 500 error response
-    }
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        user: {
+          id: newUser.id,
+          user_role: newUser.user_role,
+          user_fname: newUser.user_fname,
+          user_lname: newUser.user_lname,
+          user_profile_picture: newUser.user_profile_picture,
+          email: newUser.email,
+        },
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' } // Adjust as needed
+    );
 
-    try {
-        // Hash the password before saving
-        const hashedPassword = await bcrypt.hash(password, 10);
+    // Send response with token
+    return sendSuccess(res, { token }, 'User created successfully!', 201, 0);
 
-        // Create new user with 'member' as default role
-        const newUser = await User.create({
-            user_fname,
-            user_lname,
-            email,
-            password: hashedPassword, // Store the hashed password
-            user_gender, // Gender (optional, defaults to null if not provided)
-            user_role: 'member', // Default role set to 'member'
-            verification_token: null, // Initial value for verification token
-        });
-
-        // Send success response with user data (excluding password)
-        const { password: _, ...userWithoutPassword } = newUser.toJSON();
-        return sendSuccess(res, {
-            id: userWithoutPassword.id,
-            email: userWithoutPassword.email,
-            user_role: userWithoutPassword.user_role,
-            user_fname: userWithoutPassword.user_fname,
-            user_lname: userWithoutPassword.user_lname,
-            created_at: userWithoutPassword.created_at,
-            updated_at: userWithoutPassword.updated_at,
-        }, 'User created successfully!', 201, 0);
-
-    } catch (err) {
-        console.error('Sequelize error:', err);
-        if (err instanceof ValidationError) {
-            return sendErrorUnauthorized(res, {}, err.errors.map(e => e.message), 400, 106);
-        }
-        return res.status(500).json({ error: 'Internal server error.' }); // Standard 500 error response
-    }
+  } catch (err) {
+    console.error('Sequelize error:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
 };
+
 
 
