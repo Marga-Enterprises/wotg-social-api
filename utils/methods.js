@@ -6,8 +6,6 @@ const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
 
-const secretKey = process.env.JWT_SECRET;
-
 const randomAuthor = () => {
   const l = authors[Math.floor(Math.random() * authors.length)];
   return l;
@@ -30,6 +28,41 @@ const randomAuthor = () => {
    // Format the date
    return manilaTime.format('MM/DD/YYYY');
  };
+
+ /**
+ * Generate Access Token (Short-lived)
+ * @param {Object} user
+ * @returns {String} JWT Access Token
+ */
+exports.generateAccessToken = (user) => {
+  return jwt.sign(
+    {
+      user: {
+        id: user.id,
+        user_role: user.user_role,
+        user_fname: user.user_fname,
+        user_lname: user.user_lname,
+        user_profile_picture: user.user_profile_picture,
+        email: user.email,
+      },
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || '7d' } // Default: 7 days
+  );
+};
+
+/**
+ * Generate Refresh Token (Long-lived)
+ * @param {Object} user
+ * @returns {String} JWT Refresh Token
+ */
+exports.generateRefreshToken = (user) => {
+  return jwt.sign(
+    { userId: user.id },
+    process.env.REFRESH_SECRET,
+    { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '365d' } // Default: 1 year
+  );
+};
 
 exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = '') => {
   // console.log('COLLECTION', collection);
@@ -114,10 +147,15 @@ exports.getToken = (headers) => {
 };
 
 exports.decodeToken = (token) => {
-  if (token) {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return decoded;
-  }
+  if (!token) return null;
 
-  return null;
-}
+  try {
+      return jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+      if (err.name === "TokenExpiredError") {
+          console.error("Access token expired:", err);
+          return null; // ✅ Instead of crashing, return null
+      }
+      throw err; // ✅ If another error occurs, throw it
+  }
+};

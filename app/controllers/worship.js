@@ -1,9 +1,6 @@
 const {
     sendError,
     sendSuccess,
-    getToken,
-    sendErrorUnauthorized,
-    decodeToken
 } = require("../../utils/methods");
 
 

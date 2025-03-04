@@ -1,13 +1,14 @@
-// routes/subscription.js
-const express = require('express');
+const express = require("express");
+const authMiddleware = require("../middlewares/authMiddleware"); // ✅ Import authentication middleware
+const subscriptionController = require("../controllers/subscription"); // Import the subscription controller
+
 const router = express.Router();
-const subscriptionController = require('../controllers/subscription'); // Import the subscription controller
 
-// Route for subscribing a user
-router.post('/subscribe', subscriptionController.subscribe);
+// Apply `authMiddleware` to all routes in this file
+router.use(authMiddleware);
 
-// Route for unsubscribing a user
-router.delete('/unsubscribe/:subscriptionId', subscriptionController.unsubscribe);  // Using URL parameter for subscription ID
-
+// Subscription Routes (Protected)
+router.post("/subscribe", subscriptionController.subscribe);
+router.delete("/unsubscribe/:subscriptionId", subscriptionController.unsubscribe); // Using URL parameter for subscription ID
 
 module.exports = router;

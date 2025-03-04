@@ -1,11 +1,14 @@
 const express = require("express");
-const router = express.Router();
+const authMiddleware = require("../middlewares/authMiddleware"); // ✅ Import authentication middleware
 const worshipController = require("../controllers/worship");
 
-// API to get the latest worship video ID
-router.get("/", worshipController.getLatestWorship);
+const router = express.Router();
 
-// API to update the latest worship video ID (only for admin/host)
+// Apply `authMiddleware` to all routes in this file
+router.use(authMiddleware);
+
+// Worship Routes (Protected)
+router.get("/", worshipController.getLatestWorship);
 router.post("/", worshipController.updateLatestWorship);
 
 module.exports = router;

@@ -7,6 +7,7 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const sequelize = require("./config/db");
+const cookieParser = require('cookie-parser');
 
 // Import Routes
 const authRoutes = require("./app/routes/auth");
@@ -14,12 +15,16 @@ const chatroomRoutes = require("./app/routes/chatroom");
 const messageRoutes = require("./app/routes/message");
 const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
-const meetingroomRoutes = require("./app/routes/meetingroom");
 const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
 
 const app = express();
 const port = process.env.PORT || 4000;
 const server = http.createServer(app);
+
+const allowedOrigin =
+    process.env.NODE_ENV === "development"
+        ? "*" // React local
+        : "https://community.wotgonline.com"; // Production
 
 const io = new Server(server, {
     cors: {
@@ -46,14 +51,13 @@ webPush.setVapidDetails(
 // Middleware
 app.use(express.json());
 app.use(cors());
-
+app.use(cookieParser());
 
 // ✅ Use Routes
 app.use("/auth", authRoutes);
 app.use("/users", userRoutes);
 app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
-app.use("/meetingrooms", meetingroomRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/uploads", express.static("uploads"));

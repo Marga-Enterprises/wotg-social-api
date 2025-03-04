@@ -118,6 +118,7 @@ User.init({
         allowNull: true,
         defaultValue: null,
     },
+    refreshToken: { type: DataTypes.TEXT, allowNull: true },
 }, {
     sequelize,
     modelName: 'User',
