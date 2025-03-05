@@ -1,8 +1,8 @@
-const Subscription = require('../models/Subscription'); // Import Message model
+const Subscription = require('../models/Subscription'); // Import Subscription model
 
-// Subscribe User to Push Notifications
+// ✅ Subscribe User to Push Notifications
 exports.subscribe = async (req, res) => {
-    const { userId, deviceId, subscription } = req.body;
+    const { userId, deviceId, deviceType, subscription } = req.body;
 
     try {
         // Check if the device is already subscribed
@@ -11,30 +11,33 @@ exports.subscribe = async (req, res) => {
         });
 
         if (existingSubscription) {
-            return res.status(400).json({ message: 'This device is already subscribed.' });
+            // Update existing subscription with new FCM token
+            await existingSubscription.update({ subscription });
+            return res.status(200).json({ message: "Subscription updated successfully!" });
         }
 
         // Create a new subscription for the device
         const newSubscription = await Subscription.create({
             userId,
             deviceId,
-            subscription,
+            deviceType,
+            subscription, // Store FCM token inside JSON object
         });
 
         return res.status(200).json({
-            message: 'Device subscribed successfully!',
+            message: "Device subscribed successfully!",
             data: newSubscription,
         });
     } catch (error) {
-        console.error('Error saving subscription:', error);
-        return res.status(500).json({ message: 'Failed to subscribe device.' });
+        console.error("Error saving subscription:", error);
+        return res.status(500).json({ message: "Failed to subscribe device." });
     }
 };
 
 
-// Unsubscribe User from Push Notifications
+// ✅ Unsubscribe User from Push Notifications
 exports.unsubscribe = async (req, res) => {
-    const { subscriptionId } = req.params;  // Fetching the subscriptionId from the URL parameter
+    const { subscriptionId } = req.params; // Fetching the subscriptionId from the URL parameter
 
     try {
         // Attempt to find and delete the subscription from the database using the provided subscriptionId
@@ -43,13 +46,12 @@ exports.unsubscribe = async (req, res) => {
         });
 
         if (deletedSubscription) {
-            return sendSuccess(res, 'Unsubscribed successfully.');
+            return res.status(200).json({ message: 'Unsubscribed successfully.' });
         } else {
-            return sendError(res, null, 'Subscription not found.');
+            return res.status(404).json({ message: 'Subscription not found.' });
         }
     } catch (error) {
         console.error('Error unsubscribing:', error);
-        return sendError(res, error, 'Failed to unsubscribe.');
+        return res.status(500).json({ message: 'Failed to unsubscribe.' });
     }
 };
-

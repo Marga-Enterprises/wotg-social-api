@@ -8,6 +8,8 @@ const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
 const upload = require('./upload');
 
+const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
+
 const {
     sendError,
     sendSuccess,
@@ -195,7 +197,7 @@ exports.sendMessage = async (req, res, io) => {
                 io.to(chatroomId).emit('new_message', fullMessage);
             }
 
-            // Process the participants and handle unread status, notifications, etc. (no changes needed here)
+            // Process the participants and handle unread status, notifications, etc.
             const participants = await Participant.findAll({
                 where: { chatRoomId: chatroomId },
                 include: [
@@ -243,40 +245,45 @@ exports.sendMessage = async (req, res, io) => {
                 });
             }
 
+            // 🔥 FCM Push Notification to Participants 🔥
             const pushPromises = filteredParticipants.map(async (participant) => {
                 // Fetch all subscriptions for the user
                 const subscriptions = await Subscription.findAll({
                     where: { userId: participant.user.id },
                 });
-            
+
                 if (subscriptions.length > 0) {
-                    const notificationPayload = JSON.stringify({
-                        title: `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                        body: content,
-                        file: fileUrl, // Include file link in the notification if present
-                    });
-            
-                    // Send notifications to all devices
+                    // Send notifications to all subscribed devices
                     const sendPromises = subscriptions.map(async (subscription) => {
-                        const subscriptionObject = 
-                              process.env.NODE_ENV === 'development' ? JSON.parse(subscription.subscription) : subscription.subscription;
                         try {
-                            await webPush.sendNotification(subscriptionObject, notificationPayload);
+                            let subscriptionData = subscription.subscription;
+
+                            if (typeof subscriptionData === "string") {
+                                try {
+                                    subscriptionData = JSON.parse(subscriptionData); // Convert string to object
+                                } catch (error) {
+                                    console.error("Error parsing subscription JSON:", error);
+                                }
+                            }
+                            
+                            const fcmToken = subscriptionData?.fcmToken; // Access safely
+                            
+                            if (fcmToken) {
+                                await sendNotification(
+                                    fcmToken,
+                                    `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                                    content
+                                );
+                            }
                         } catch (error) {
                             console.error('Error sending push notification:', error);
-            
-                            // Remove invalid/expired subscriptions
-                            if (error.statusCode === 410) { // "Gone" status
-                                // console.log('Removing expired subscription:', subscription.deviceId);
-                                await Subscription.destroy({ where: { id: subscription.id } });
-                            }
                         }
                     });
-            
+
                     // Wait for all notifications to complete
                     await Promise.all(sendPromises);
                 }
-            });            
+            });
 
             await Promise.all(pushPromises);
 
@@ -287,6 +294,7 @@ exports.sendMessage = async (req, res, io) => {
         }
     });
 };
+
 
 exports.reactToMessage = async (req, res, io) => {
     const token = getToken(req.headers);
@@ -358,30 +366,30 @@ exports.reactToMessage = async (req, res, io) => {
 
             const reactionEmoji = reactionEmojis[react] || ""; // Default to empty if reaction is unknown
 
-            const notificationPayload = JSON.stringify({
-                title: 'WOTG Community',
-                body: `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`,
-                icon: fullReaction.user.user_profile_picture
-                    ? `/uploads/${fullReaction.user.user_profile_picture}`
-                    : null,
-            });
-
             // Send notifications to all subscribed devices of the sender
             const sendPromises = subscriptions.map(async (subscription) => {
-                const subscriptionObject = 
-                    process.env.NODE_ENV === 'development' 
-                    ? JSON.parse(subscription.subscription) 
-                    : subscription.subscription;
-                
                 try {
-                    await webPush.sendNotification(subscriptionObject, notificationPayload);
+                    let subscriptionData = subscription.subscription;
+
+                    if (typeof subscriptionData === "string") {
+                        try {
+                            subscriptionData = JSON.parse(subscriptionData); // Convert string to object
+                        } catch (error) {
+                            console.error("Error parsing subscription JSON:", error);
+                        }
+                    }
+                    
+                    const fcmToken = subscriptionData?.fcmToken; // Access safely
+                    
+                    if (fcmToken) {
+                        await sendNotification(
+                            fcmToken,
+                            'WOTG Community',
+                            `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`
+                        );
+                    }
                 } catch (error) {
                     console.error('Error sending push notification:', error);
-
-                    // Remove invalid/expired subscriptions
-                    if (error.statusCode === 410) { // "Gone" status
-                        await Subscription.destroy({ where: { id: subscription.id } });
-                    }
                 }
             });
 
