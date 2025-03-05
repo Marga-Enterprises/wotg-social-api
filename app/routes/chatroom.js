@@ -6,7 +6,7 @@ module.exports = (io) => {
     const chatroomController = require("../controllers/chatroom");
 
     // Apply `authMiddleware` to all chatroom routes
-    router.use(authMiddleware);
+    // router.use(authMiddleware);
 
     // Fetch all chatrooms
     router.get("/", chatroomController.getAllChatrooms);

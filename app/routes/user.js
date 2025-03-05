@@ -5,7 +5,7 @@ const userController = require("../controllers/user"); // Import the user contro
 const router = express.Router();
 
 // Apply `authMiddleware` to all routes in this file
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 // User Routes (Protected)
 router.get("/", userController.list);

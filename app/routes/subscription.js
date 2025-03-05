@@ -5,7 +5,7 @@ const subscriptionController = require("../controllers/subscription"); // Import
 const router = express.Router();
 
 // Apply `authMiddleware` to all routes in this file
-router.use(authMiddleware);
+// router.use(authMiddleware);
 
 // Subscription Routes (Protected)
 router.post("/subscribe", subscriptionController.subscribe);

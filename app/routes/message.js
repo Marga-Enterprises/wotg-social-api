@@ -6,7 +6,7 @@ module.exports = (io) => {
     const messageController = require("../controllers/message");
 
     // Apply `authMiddleware` to all routes
-    router.use(authMiddleware);
+    // router.use(authMiddleware);
 
     // Message Routes (Protected)
     router.get("/:chatroomId", (req, res) => messageController.getMessagesByChatroom(req, res, io));
