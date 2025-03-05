@@ -7,7 +7,6 @@ const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
 const sequelize = require("./config/db");
-const cookieParser = require('cookie-parser');
 
 // Import Routes
 const authRoutes = require("./app/routes/auth");
@@ -51,7 +50,6 @@ webPush.setVapidDetails(
 // Middleware
 app.use(express.json());
 app.use(cors());
-app.use(cookieParser());
 
 // ✅ Use Routes
 app.use("/auth", authRoutes);
@@ -122,6 +120,7 @@ io.on("connection", (socket) => {
 
     // **New Feature: Real-Time Floating Reactions**
     socket.on("send_reaction", (reaction) => {
+        console.log("[[[[[[[[[[[[[[[[[[🚀 New Reaction:]]]]]]]]]]]]]]]]]]", reaction);
         io.emit("new_reaction", reaction);
     });
 
