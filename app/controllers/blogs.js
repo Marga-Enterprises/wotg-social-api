@@ -1,4 +1,5 @@
 const Blogs = require('../models/Blogs'); 
+const { Op } = require("sequelize");
 
 const {
     sendError,
@@ -8,6 +9,8 @@ const {
     decodeToken
 } = require("../../utils/methods");
 
+const moment = require("moment-timezone");
+
 exports.list = async (req, res) => {
     let token = getToken(req.headers);
 
@@ -16,6 +19,11 @@ exports.list = async (req, res) => {
     }
 
     try {
+        // Get current date and format it correctly for database comparison
+        const today = moment().tz("Asia/Manila").endOf('day').format("YYYY-MM-DD HH:mm:ss");
+
+        console.log("[[[[[[[[[[[[[[[[[[[TODAY]]]]]]]]]]]]]]]]]]]", today);
+
         // Extract and validate pagination parameters
         let { pageIndex, pageSize } = req.query;
 
@@ -31,11 +39,16 @@ exports.list = async (req, res) => {
         const offset = (pageIndex - 1) * pageSize;
         const limit = pageSize;
 
-        // Fetch paginated blogs
+        // Fetch paginated blogs, sorted by `blog_release_date_and_time` (most recent first)
         const { rows: blogs, count: totalRecords } = await Blogs.findAndCountAll({
             limit,
             offset,
-            order: [['created_at', 'DESC']], // Order by latest blogs
+            where: {
+                blog_release_date_and_time: {
+                    [Op.lte]: today, // Only show blogs where release date is today or earlier
+                },
+            },
+            order: [['blog_release_date_and_time', 'DESC']], // Sort by most recent release date
         });
 
         // Return paginated response
@@ -66,13 +79,20 @@ exports.getById = async (req, res) => {
             return sendError(res, "Invalid blog ID provided.");
         }
 
+        // Get the current date-time in Asia/Manila (full timestamp)
+        const now = moment().tz("Asia/Manila").format("YYYY-MM-DD HH:mm:ss");
+
         // Fetch blog by ID
         const blog = await Blogs.findOne({
-            where: { id },
+            where: {
+                id,
+                blog_release_date_and_time: { [Op.lte]: now }, // Ensure the blog is released
+            },
         });
 
+        // Check if blog exists
         if (!blog) {
-            return sendError(res, "Blog not found.");
+            return sendError(res, "Blog not found or not yet available.");
         }
 
         sendSuccess(res, blog);
