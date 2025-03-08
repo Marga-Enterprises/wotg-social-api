@@ -15,6 +15,7 @@ const messageRoutes = require("./app/routes/message");
 const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
+const blogRoutes = require("./app/routes/blogs");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -58,6 +59,7 @@ app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/worship", worshipRoutes); // 🔥 Worship API routes
+app.use("/blogs", blogRoutes);
 app.use("/uploads", express.static("uploads"));
 
 
