@@ -90,16 +90,23 @@ exports.getById = async (req, res) => {
             return sendError(res, "Invalid blog ID provided.");
         }
 
+        // Decode token to check user role
+        const decodedToken = decodeToken(token);
+        const userRole = decodedToken.user.user_role;
+
         // Get the current date-time in Asia/Manila (full timestamp)
         const now = moment().tz("Asia/Manila").format("YYYY-MM-DD HH:mm:ss");
 
+        // Base filter: Only allow approved blogs
+        let whereCondition = { id, blog_approved: true };
+
+        // If user is 'user', restrict to released blogs
+        if (userRole === 'user') {
+            whereCondition.blog_release_date_and_time = { [Op.lte]: now };
+        }
+
         // Fetch blog by ID
-        const blog = await Blogs.findOne({
-            where: {
-                id,
-                blog_release_date_and_time: { [Op.lte]: now }, // Ensure the blog is released
-            },
-        });
+        const blog = await Blogs.findOne({ where: whereCondition });
 
         // Check if blog exists
         if (!blog) {
@@ -111,6 +118,7 @@ exports.getById = async (req, res) => {
         sendError(res, error);
     }
 };
+
 
 exports.uploadVideo = async (req, res) => {
     let token = getToken(req.headers);
