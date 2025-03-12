@@ -49,6 +49,10 @@ Blog.init({
     blog_intro: {
         type: DataTypes.TEXT('long'),
         allowNull: true,
+    },
+    blog_video: {
+        type: DataTypes.TEXT,
+        allowNull: true,
     }
 }, {
     sequelize,
