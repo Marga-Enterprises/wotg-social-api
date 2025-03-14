@@ -48,7 +48,7 @@ exports.list = async (req, res) => {
         let whereCondition = { blog_approved: true };
 
         // If user is 'user', add blog_release_date_and_time filter
-        if (userRole === 'user') {
+        if (userRole === 'member') {
             whereCondition.blog_release_date_and_time = { [Op.lte]: today };
         }
 
@@ -100,7 +100,7 @@ exports.getById = async (req, res) => {
         let whereCondition = { id, blog_approved: true };
 
         // If user is 'user', restrict to released blogs
-        if (userRole === 'user') {
+        if (userRole === 'member') {
             whereCondition.blog_release_date_and_time = { [Op.lte]: now };
         }
 
