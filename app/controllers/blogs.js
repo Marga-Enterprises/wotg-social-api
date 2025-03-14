@@ -146,47 +146,30 @@ exports.uploadVideo = async (req, res) => {
             }
 
             const inputFilePath = req.file.path;
-            const outputFileName = `compressed_${Date.now()}.mp4`;
-            const outputFilePath = path.join(__dirname, "../../uploads", outputFileName);
+            const newFileName = path.basename(inputFilePath);
 
-            // Validate video duration
-            ffmpeg.ffprobe(inputFilePath, async (err, metadata) => {
-                if (err) {
-                    fs.unlinkSync(inputFilePath); // Delete invalid file
-                    console.log('[[[[[[[[[VIDEO ERROR]]]]]]]]]', err);
-                    return sendError(res, "Error processing video.");
+            // ✅ Validate WebM File Before Processing
+            if (path.extname(inputFilePath).toLowerCase() !== ".webm") {
+                fs.unlinkSync(inputFilePath); // Delete invalid file
+                return sendError(res, "Invalid file format. Please upload a WebM video.");
+            }
+
+            // ✅ Delete the old WebM file if it exists
+            if (blog.blog_video) {
+                const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
+                if (fs.existsSync(oldFilePath)) {
+                    fs.unlinkSync(oldFilePath); // ✅ Remove old WebM file
                 }
+            }
 
-                const duration = metadata.format.duration; // Video length in seconds
+            // ✅ Update blog with new WebM filename
+            blog.blog_video = newFileName;
+            await blog.save();
 
-                if (duration > 60) {
-                    fs.unlinkSync(inputFilePath); // Delete file if too long
-                    return sendError(res, "Video must be 1 minute or less.");
-                }
-
-                // Convert video to 360p
-                ffmpeg(inputFilePath)
-                    .output(outputFilePath)
-                    .videoCodec("libx264")
-                    .size("640x360") // 360p resolution
-                    .on("end", async () => {
-                        fs.unlinkSync(inputFilePath); // Delete original file after compression
-
-                        // Update blog with video filename
-                        blog.blog_video = outputFileName;
-                        await blog.save();
-
-                        sendSuccess(res, {
-                            message: "Video uploaded and compressed successfully.",
-                            blog_id: blog.id,
-                            video_url: outputFileName, // Return filename
-                        });
-                    })
-                    .on("error", (err) => {
-                        fs.unlinkSync(inputFilePath); // Cleanup on error
-                        sendError(res, "Video processing failed: " + err.message);
-                    })
-                    .run();
+            sendSuccess(res, {
+                message: "WebM video uploaded successfully.",
+                blog_id: blog.id,
+                video_url: newFileName, // ✅ Send filename for frontend use
             });
         });
     } catch (error) {
