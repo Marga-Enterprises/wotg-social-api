@@ -138,24 +138,19 @@ exports.uploadVideo = async (req, res) => {
 
         upload.single("file")(req, res, async (err) => {
             if (err) {
-                console.log("UPLOAD ERROR:", err.message);
                 return sendError(res, "Video upload failed: " + err.message);
             }
 
             if (!req.file) {
-                console.log("UPLOAD ERROR: No file received.");
                 return sendError(res, "No video file uploaded.");
             }
 
             const inputFilePath = req.file.path;
             const newFileName = path.basename(inputFilePath);
 
-            console.log("New Uploaded File:", newFileName);
-
             // ✅ Ensure only WebM is accepted for video uploads
             if (!newFileName.endsWith(".webm")) {
                 fs.unlinkSync(inputFilePath);
-                console.log("UPLOAD ERROR: Invalid file format.");
                 return sendError(res, "Invalid file format. Please upload a WebM video.");
             }
 
@@ -164,15 +159,12 @@ exports.uploadVideo = async (req, res) => {
                 const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
                 if (fs.existsSync(oldFilePath)) {
                     fs.unlinkSync(oldFilePath);
-                    console.log("Old File Deleted:", blog.blog_video);
                 }
             }
 
             // ✅ Update blog with new WebM filename
             blog.blog_video = newFileName;
             await blog.save();
-
-            console.log("Video uploaded successfully:", newFileName);
 
             sendSuccess(res, {
                 message: "WebM video uploaded successfully.",
@@ -181,9 +173,9 @@ exports.uploadVideo = async (req, res) => {
             });
         });
     } catch (error) {
-        console.log("UPLOAD ERROR:", error);
         sendError(res, error);
     }
 };
+
 
 
