@@ -3,7 +3,10 @@ const path = require("path");
 const fs = require("fs");
 
 // Determine upload directory based on NODE_ENV
-const uploadDir = "../../uploads";
+const uploadDir =
+    process.env.NODE_ENV === "development"
+        ? "../../uploads"
+        : "/var/www/community.wotgonline.com/wotg-social-api/uploads";
 
 // Ensure "uploads" directory exists
 if (!fs.existsSync(uploadDir)) {
