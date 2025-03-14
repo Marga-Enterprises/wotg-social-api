@@ -121,36 +121,48 @@ exports.getById = async (req, res) => {
 
 
 exports.uploadVideo = async (req, res) => {
+    console.log("⚡ [uploadVideo] Function triggered!");
+
     let token = getToken(req.headers);
 
     if (!token) {
+        console.log("❌ [uploadVideo] Unauthorized access attempt.");
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 
     const { id } = req.params; // Get blog ID from URL
+    console.log(`📌 [uploadVideo] Processing blog ID: ${id}`);
 
     try {
         // Find the blog entry
         const blog = await Blogs.findByPk(id);
         if (!blog) {
+            console.log(`❌ [uploadVideo] Blog with ID ${id} not found.`);
             return sendError(res, "Blog not found.");
         }
 
+        console.log(`✅ [uploadVideo] Blog found: ${blog.id}`);
+
         upload.single("file")(req, res, async (err) => {
             if (err) {
+                console.log(`❌ [uploadVideo] Upload error: ${err.message}`);
                 return sendError(res, "Video upload failed: " + err.message);
             }
 
             if (!req.file) {
+                console.log("❌ [uploadVideo] No video file uploaded.");
                 return sendError(res, "No video file uploaded.");
             }
 
             const inputFilePath = req.file.path;
             const newFileName = path.basename(inputFilePath);
 
+            console.log(`📂 [uploadVideo] New file uploaded: ${newFileName}`);
+
             // ✅ Validate WebM File Before Processing
             if (path.extname(inputFilePath).toLowerCase() !== ".webm") {
                 fs.unlinkSync(inputFilePath); // Delete invalid file
+                console.log(`❌ [uploadVideo] Invalid file format: ${inputFilePath}`);
                 return sendError(res, "Invalid file format. Please upload a WebM video.");
             }
 
@@ -159,12 +171,17 @@ exports.uploadVideo = async (req, res) => {
                 const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
                 if (fs.existsSync(oldFilePath)) {
                     fs.unlinkSync(oldFilePath); // ✅ Remove old WebM file
+                    console.log(`🗑 [uploadVideo] Deleted old video file: ${blog.blog_video}`);
+                } else {
+                    console.log(`⚠️ [uploadVideo] Old file ${blog.blog_video} not found.`);
                 }
             }
 
             // ✅ Update blog with new WebM filename
             blog.blog_video = newFileName;
             await blog.save();
+
+            console.log(`✅ [uploadVideo] Video uploaded successfully: ${newFileName}`);
 
             sendSuccess(res, {
                 message: "WebM video uploaded successfully.",
@@ -173,6 +190,8 @@ exports.uploadVideo = async (req, res) => {
             });
         });
     } catch (error) {
+        console.log(`❌ [uploadVideo] Error: ${error.message}`);
         sendError(res, error);
     }
 };
+
