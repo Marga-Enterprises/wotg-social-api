@@ -16,26 +16,25 @@ const storage = multer.diskStorage({
     filename: (req, file, cb) => {
         const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 
-        // ✅ If file is a WebM video and no extension is present, force .webm extension
+        // ✅ Ensure a proper file extension
         let ext = path.extname(file.originalname);
-        if (!ext && file.mimetype.startsWith("video/")) {
-            ext = ".webm"; // Ensure WebM extension
+        if (!ext) {
+            if (file.mimetype.startsWith("video/")) {
+                ext = ".webm"; // Default videos to .webm if no extension is present
+            } else if (file.mimetype.startsWith("image/")) {
+                ext = ".webp"; // Default images to .jpg if no extension is present
+            } else {
+                ext = ".bin"; // Default unknown files to .bin
+            }
         }
 
         cb(null, uniqueSuffix + ext);
     },
 });
 
-// ✅ Allow both images (JPG, PNG, WEBP) and WebM videos
+// ✅ Accept all file types
 const fileFilter = (req, file, cb) => {
-    if (
-        file.mimetype.startsWith("image/") || // ✅ Allow images
-        (file.mimetype.startsWith("video/") && file.mimetype === "video/webm") // ✅ Allow only WebM videos
-    ) {
-        cb(null, true);
-    } else {
-        cb(new Error("Invalid file type. Only images (JPG, PNG, WEBP) and WebM videos are allowed."), false);
-    }
+    cb(null, true); // Allow any file type
 };
 
 // ✅ Multer instance (limit file size)
@@ -43,7 +42,7 @@ const upload = multer({
     storage,
     fileFilter,
     limits: {
-        fileSize: 50 * 1024 * 1024, // Max 50MB
+        fileSize: 100 * 1024 * 1024, // Increased Max 100MB for all files
     },
 });
 
