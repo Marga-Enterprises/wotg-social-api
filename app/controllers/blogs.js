@@ -124,31 +124,24 @@ exports.uploadVideo = async (req, res) => {
     let token = getToken(req.headers);
 
     if (!token) {
-        console.log("❌ [UPLOAD ERROR] Unauthorized access - No token found.");
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 
     const { id } = req.params; // Get blog ID from URL
-    console.log(`📡 [UPLOAD VIDEO] Upload request received for Blog ID: ${id}`);
 
     try {
         // Find the blog entry
         const blog = await Blogs.findByPk(id);
         if (!blog) {
-            console.log("❌ [UPLOAD ERROR] Blog not found.");
             return sendError(res, "Blog not found.");
         }
 
-        console.log("✅ [UPLOAD VIDEO] Blog found:", blog.blog_title);
-
         upload.single("file")(req, res, async (err) => {
             if (err) {
-                console.log("❌ [UPLOAD ERROR] Video upload failed:", err.message);
                 return sendError(res, "Video upload failed: " + err.message);
             }
 
             if (!req.file) {
-                console.log("❌ [UPLOAD ERROR] No file uploaded.");
                 return sendError(res, "No video file uploaded.");
             }
 
@@ -156,13 +149,9 @@ exports.uploadVideo = async (req, res) => {
             const originalFileName = path.basename(inputFilePath);
             const fileExt = path.extname(originalFileName).toLowerCase();
 
-            console.log(`📂 [UPLOAD VIDEO] New file received: ${originalFileName}`);
-
             // ✅ Define the WebM output filename
             const webmFileName = `${path.basename(originalFileName, fileExt)}.webm`;
             const webmFilePath = path.join(__dirname, "../../uploads", webmFileName);
-
-            console.log(`🔄 [UPLOAD VIDEO] Converting ${fileExt} to WebM...`);
 
             // ✅ Convert any video format to WebM using FFmpeg
             ffmpeg(inputFilePath)
@@ -170,25 +159,19 @@ exports.uploadVideo = async (req, res) => {
                 .videoCodec("libvpx-vp9")
                 .audioCodec("libopus")
                 .on("end", async () => {
-                    console.log(`✅ [UPLOAD VIDEO] Conversion successful: ${webmFileName}`);
-                    
                     fs.unlinkSync(inputFilePath); // ✅ Delete original file
-                    console.log(`🗑 [UPLOAD VIDEO] Deleted original file: ${originalFileName}`);
 
                     // ✅ Delete old WebM file if it exists
                     if (blog.blog_video) {
                         const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
                         if (fs.existsSync(oldFilePath)) {
                             fs.unlinkSync(oldFilePath);
-                            console.log(`🗑 [UPLOAD VIDEO] Deleted old video: ${blog.blog_video}`);
                         }
                     }
 
                     // ✅ Update blog with new WebM filename
                     blog.blog_video = webmFileName;
                     await blog.save();
-
-                    console.log("✅ [UPLOAD VIDEO] Video successfully saved to database:", webmFileName);
 
                     sendSuccess(res, {
                         message: "WebM video uploaded successfully.",
@@ -197,17 +180,16 @@ exports.uploadVideo = async (req, res) => {
                     });
                 })
                 .on("error", (error) => {
-                    console.log("❌ [UPLOAD ERROR] FFmpeg Conversion Failed:", error.message);
                     fs.unlinkSync(inputFilePath); // Delete failed conversion file
                     sendError(res, "Video conversion failed.");
                 })
                 .run();
         });
     } catch (error) {
-        console.log("❌ [UPLOAD ERROR] Unexpected error:", error);
         sendError(res, error);
     }
 };
+
 
 
 
