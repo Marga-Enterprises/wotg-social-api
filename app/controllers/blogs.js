@@ -3,7 +3,6 @@ const { Op } = require("sequelize");
 const upload = require('./upload'); // ✅ Import the corrected upload handler
 const fs = require("fs");
 const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
 
 const {
     sendError,
