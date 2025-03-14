@@ -2,8 +2,10 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
+// Determine upload directory based on NODE_ENV
+const uploadDir = "../../uploads";
+
 // Ensure "uploads" directory exists
-const uploadDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -11,7 +13,7 @@ if (!fs.existsSync(uploadDir)) {
 // Configure multer storage
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, "uploads/"); // Save files in the "uploads" folder
+        cb(null, uploadDir); // Save files in the dynamic "uploads" folder
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -22,7 +24,7 @@ const storage = multer.diskStorage({
             if (file.mimetype.startsWith("video/")) {
                 ext = ".webm"; // Default videos to .webm if no extension is present
             } else if (file.mimetype.startsWith("image/")) {
-                ext = ".webp"; // Default images to .jpg if no extension is present
+                ext = ".webp"; // Default images to .webp if no extension is present
             } else {
                 ext = ".bin"; // Default unknown files to .bin
             }

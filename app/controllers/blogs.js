@@ -181,6 +181,7 @@ exports.uploadVideo = async (req, res) => {
                 })
                 .on("error", (error) => {
                     fs.unlinkSync(inputFilePath); // Delete failed conversion file
+                    console.log('[[[[UPLOAD ERROR]]]]', error)
                     sendError(res, "Video conversion failed.");
                 })
                 .run();
