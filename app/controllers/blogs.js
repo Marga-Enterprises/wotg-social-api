@@ -153,83 +153,55 @@ exports.uploadVideo = async (req, res) => {
             }
 
             const inputFilePath = req.file.path;
-            let newFileName = path.basename(inputFilePath);
-            const fileExt = path.extname(newFileName).toLowerCase();
+            const originalFileName = path.basename(inputFilePath);
+            const fileExt = path.extname(originalFileName).toLowerCase();
 
-            console.log(`📂 [UPLOAD VIDEO] New file received: ${newFileName}`);
+            console.log(`📂 [UPLOAD VIDEO] New file received: ${originalFileName}`);
 
-            // ✅ Convert MP4 to WebM if necessary
-            if (fileExt === ".mp4") {
-                const webmFileName = `${path.basename(newFileName, ".mp4")}.webm`;
-                const webmFilePath = path.join(__dirname, "../../uploads", webmFileName);
+            // ✅ Define the WebM output filename
+            const webmFileName = `${path.basename(originalFileName, fileExt)}.webm`;
+            const webmFilePath = path.join(__dirname, "../../uploads", webmFileName);
 
-                console.log("🔄 [UPLOAD VIDEO] Converting MP4 to WebM...");
+            console.log(`🔄 [UPLOAD VIDEO] Converting ${fileExt} to WebM...`);
 
-                ffmpeg(inputFilePath)
-                    .output(webmFilePath)
-                    .videoCodec("libvpx-vp9")
-                    .audioCodec("libopus")
-                    .on("end", async () => {
-                        console.log(`✅ [UPLOAD VIDEO] Conversion successful: ${webmFileName}`);
-                        
-                        fs.unlinkSync(inputFilePath); // ✅ Delete original MP4 file
-                        newFileName = webmFileName; // ✅ Save the WebM filename
-                        
-                        // ✅ Delete old WebM file if it exists
-                        if (blog.blog_video) {
-                            const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
-                            if (fs.existsSync(oldFilePath)) {
-                                fs.unlinkSync(oldFilePath);
-                                console.log(`🗑 [UPLOAD VIDEO] Deleted old video: ${blog.blog_video}`);
-                            }
+            // ✅ Convert any video format to WebM using FFmpeg
+            ffmpeg(inputFilePath)
+                .output(webmFilePath)
+                .videoCodec("libvpx-vp9")
+                .audioCodec("libopus")
+                .on("end", async () => {
+                    console.log(`✅ [UPLOAD VIDEO] Conversion successful: ${webmFileName}`);
+                    
+                    fs.unlinkSync(inputFilePath); // ✅ Delete original file
+                    console.log(`🗑 [UPLOAD VIDEO] Deleted original file: ${originalFileName}`);
+
+                    // ✅ Delete old WebM file if it exists
+                    if (blog.blog_video) {
+                        const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
+                        if (fs.existsSync(oldFilePath)) {
+                            fs.unlinkSync(oldFilePath);
+                            console.log(`🗑 [UPLOAD VIDEO] Deleted old video: ${blog.blog_video}`);
                         }
-
-                        // ✅ Update blog with new WebM filename
-                        blog.blog_video = newFileName;
-                        await blog.save();
-
-                        console.log("✅ [UPLOAD VIDEO] Video successfully saved to database:", newFileName);
-
-                        sendSuccess(res, {
-                            message: "WebM video uploaded successfully.",
-                            blog_id: blog.id,
-                            video_url: newFileName,
-                        });
-                    })
-                    .on("error", (error) => {
-                        console.log("❌ [UPLOAD ERROR] FFmpeg Conversion Failed:", error.message);
-                        fs.unlinkSync(inputFilePath); // Delete failed conversion file
-                        sendError(res, "Video conversion failed.");
-                    })
-                    .run();
-            } else if (fileExt === ".webm") {
-                console.log("✅ [UPLOAD VIDEO] Valid WebM file detected. No conversion needed.");
-
-                // ✅ Delete old WebM file if it exists
-                if (blog.blog_video) {
-                    const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
-                    if (fs.existsSync(oldFilePath)) {
-                        fs.unlinkSync(oldFilePath);
-                        console.log(`🗑 [UPLOAD VIDEO] Deleted old video: ${blog.blog_video}`);
                     }
-                }
 
-                // ✅ Update blog with new WebM filename
-                blog.blog_video = newFileName;
-                await blog.save();
+                    // ✅ Update blog with new WebM filename
+                    blog.blog_video = webmFileName;
+                    await blog.save();
 
-                console.log("✅ [UPLOAD VIDEO] Video successfully saved to database:", newFileName);
+                    console.log("✅ [UPLOAD VIDEO] Video successfully saved to database:", webmFileName);
 
-                sendSuccess(res, {
-                    message: "WebM video uploaded successfully.",
-                    blog_id: blog.id,
-                    video_url: newFileName,
-                });
-            } else {
-                fs.unlinkSync(inputFilePath);
-                console.log("❌ [UPLOAD ERROR] Invalid file format.");
-                return sendError(res, "Invalid file format. Only WebM or MP4 videos are allowed.");
-            }
+                    sendSuccess(res, {
+                        message: "WebM video uploaded successfully.",
+                        blog_id: blog.id,
+                        video_url: webmFileName,
+                    });
+                })
+                .on("error", (error) => {
+                    console.log("❌ [UPLOAD ERROR] FFmpeg Conversion Failed:", error.message);
+                    fs.unlinkSync(inputFilePath); // Delete failed conversion file
+                    sendError(res, "Video conversion failed.");
+                })
+                .run();
         });
     } catch (error) {
         console.log("❌ [UPLOAD ERROR] Unexpected error:", error);
