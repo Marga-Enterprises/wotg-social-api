@@ -1,6 +1,6 @@
 const User = require('../models/User'); // Import User model
 const { Op } = require('sequelize'); // Import Sequelize Operators
-const upload = require('./upload');
+const { upload } = require('./upload');
 const fs = require("fs");
 const path = require("path");
 

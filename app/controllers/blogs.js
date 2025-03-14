@@ -1,6 +1,6 @@
 const Blogs = require('../models/Blogs'); 
 const { Op } = require("sequelize");
-const upload = require('./upload');
+const { upload } = require('./upload'); // ✅ Import the corrected upload handler
 const fs = require("fs");
 const path = require("path");
 const ffmpeg = require("fluent-ffmpeg");
@@ -121,76 +121,67 @@ exports.getById = async (req, res) => {
 
 
 exports.uploadVideo = async (req, res) => {
-    console.log("⚡ [uploadVideo] Function triggered!");
-
     let token = getToken(req.headers);
 
     if (!token) {
-        console.log("❌ [uploadVideo] Unauthorized access attempt.");
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 
-    const { id } = req.params; // Get blog ID from URL
-    console.log(`📌 [uploadVideo] Processing blog ID: ${id}`);
+    const { id } = req.params;
 
     try {
-        // Find the blog entry
         const blog = await Blogs.findByPk(id);
         if (!blog) {
-            console.log(`❌ [uploadVideo] Blog with ID ${id} not found.`);
             return sendError(res, "Blog not found.");
         }
 
-        console.log(`✅ [uploadVideo] Blog found: ${blog.id}`);
-
         upload.single("file")(req, res, async (err) => {
             if (err) {
-                console.log(`❌ [uploadVideo] Upload error: ${err.message}`);
+                console.log("UPLOAD ERROR:", err.message); // ✅ Debugging Log
                 return sendError(res, "Video upload failed: " + err.message);
             }
 
             if (!req.file) {
-                console.log("❌ [uploadVideo] No video file uploaded.");
+                console.log("UPLOAD ERROR: No file received."); // ✅ Debugging Log
                 return sendError(res, "No video file uploaded.");
             }
 
-            const inputFilePath = req.file.path;
-            const newFileName = path.basename(inputFilePath);
+            const newFileName = req.file.filename; // ✅ Correct filename reference
+            const uploadPath = path.join(__dirname, "../../uploads", newFileName); // ✅ Ensure root uploads/
 
-            console.log(`📂 [uploadVideo] New file uploaded: ${newFileName}`);
+            console.log("New Uploaded File:", newFileName); // ✅ Debugging Log
 
             // ✅ Validate WebM File Before Processing
-            if (path.extname(inputFilePath).toLowerCase() !== ".webm") {
-                fs.unlinkSync(inputFilePath); // Delete invalid file
-                console.log(`❌ [uploadVideo] Invalid file format: ${inputFilePath}`);
+            if (path.extname(newFileName).toLowerCase() !== ".webm") {
+                fs.unlinkSync(uploadPath); // Delete invalid file
+                console.log("UPLOAD ERROR: Invalid file format.");
                 return sendError(res, "Invalid file format. Please upload a WebM video.");
             }
 
-            // ✅ Delete the old WebM file if it exists
+            // ✅ Delete the old WebM video if it exists
             if (blog.blog_video) {
                 const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
                 if (fs.existsSync(oldFilePath)) {
                     fs.unlinkSync(oldFilePath); // ✅ Remove old WebM file
-                    console.log(`🗑 [uploadVideo] Deleted old video file: ${blog.blog_video}`);
-                } else {
-                    console.log(`⚠️ [uploadVideo] Old file ${blog.blog_video} not found.`);
+                    console.log("Old File Deleted:", blog.blog_video);
                 }
             }
 
-            // ✅ Update blog with new WebM filename
+            // ✅ Update database with new WebM filename
             blog.blog_video = newFileName;
             await blog.save();
 
-            console.log(`✅ [uploadVideo] Video uploaded successfully: ${newFileName}`);
+            console.log("Video uploaded successfully:", newFileName); // ✅ Debugging Log
 
             sendSuccess(res, {
                 message: "WebM video uploaded successfully.",
                 blog_id: blog.id,
-                video_url: newFileName, // ✅ Send filename for frontend use
+                video_url: newFileName, // ✅ Send filename for frontend
             });
         });
+
     } catch (error) {
-        console.log(`❌ [uploadVideo] Error: ${error.message}`);
+        console.log("UPLOAD ERROR:", error.message); // ✅ Debugging Log
         sendError(res, error);
     }
 };
