@@ -157,12 +157,10 @@ function updateViewerCount(io) {
 // ✅ Sync Database
 sequelize
     .sync({ force: false })
-    .then(() => {
-        console.log("Database synchronized...");
-        server.listen(port, () => {
+    .then(() => console.log("Database synchronized..."))
+    .catch((err) => console.error("Error synchronizing the database:", err))
+    .finally(() => {
+        server.listen(port, '0.0.0.0', () => {
             console.log(`🚀 Server running on http://localhost:${port}`);
         });
-    })
-    .catch((err) => {
-        console.error("Error synchronizing the database:", err);
     });

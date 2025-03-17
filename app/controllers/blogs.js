@@ -127,6 +127,9 @@ exports.uploadVideo = async (req, res) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 
+    const decodedToken = decodeToken(token);
+    const userId = decodedToken.user.id; // ✅ Extract uploader's ID
+
     const { id } = req.params; // Get blog ID from URL
 
     try {
@@ -169,19 +172,21 @@ exports.uploadVideo = async (req, res) => {
                         }
                     }
 
-                    // ✅ Update blog with new WebM filename
+                    // ✅ Update blog with new WebM filename and uploader ID
                     blog.blog_video = webmFileName;
+                    blog.blog_uploaded_by = userId; // ✅ Store uploader's ID
                     await blog.save();
 
                     sendSuccess(res, {
                         message: "WebM video uploaded successfully.",
                         blog_id: blog.id,
+                        uploaded_by: userId, // ✅ Return uploader ID in response
                         video_url: webmFileName,
                     });
                 })
                 .on("error", (error) => {
                     fs.unlinkSync(inputFilePath); // Delete failed conversion file
-                    console.log('[[[[UPLOAD ERROR]]]]', error)
+                    console.log('[[[[UPLOAD ERROR]]]]', error);
                     sendError(res, "Video conversion failed.");
                 })
                 .run();
@@ -191,6 +196,63 @@ exports.uploadVideo = async (req, res) => {
     }
 };
 
+
+exports.deleteVideo = async (req, res) => {
+    let token = getToken(req.headers);
+
+    if (!token) {
+        return sendErrorUnauthorized(res, "", "Please login first.");
+    }
+
+    const decodedToken = decodeToken(token);
+    const userId = decodedToken.user.id; // ✅ Extract logged-in user ID
+    const userRole = decodedToken.user.user_role; // ✅ Extract user role
+
+    const { id } = req.params; // Blog ID from request params
+
+    try {
+        // Find the blog entry
+        const blog = await Blogs.findByPk(id);
+        if (!blog) {
+            return sendError(res, "Blog not found.");
+        }
+
+        // ✅ Check if the user is authorized to delete the video
+        if (userRole !== "admin" && userRole !== "owner" && blog.blog_uploaded_by !== userId) {
+            return sendErrorUnauthorized(res, "", "You are not authorized to delete this video.");
+        }
+
+        // Check if a video exists
+        if (!blog.blog_video) {
+            return sendError(res, "No video associated with this blog.");
+        }
+
+        // ✅ Get the absolute file path
+        const videoFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
+
+        // ✅ Delete the file from the server
+        if (fs.existsSync(videoFilePath)) {
+            try {
+                fs.unlinkSync(videoFilePath);
+                console.log(`Deleted video file: ${videoFilePath}`);
+            } catch (unlinkError) {
+                console.error("Error deleting video file:", unlinkError);
+                return sendError(res, "Failed to delete video file from server.");
+            }
+        } else {
+            console.warn("Video file not found on server:", videoFilePath);
+        }
+
+        // ✅ Update the database to remove the video reference
+        blog.blog_video = null;
+        await blog.save();
+
+        sendSuccess(res, { message: "Video deleted successfully." });
+    } catch (error) {
+        console.error("Error in deleteVideo:", error);
+        sendError(res, error);
+    }
+};
 
 
 

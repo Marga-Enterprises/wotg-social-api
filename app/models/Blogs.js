@@ -27,6 +27,10 @@ Blog.init({
         type: DataTypes.INTEGER(11),
         allowNull: false,
     },
+    blog_uploaded_by: {
+        type: DataTypes.INTEGER(11),
+        allowNull: true, // ✅ This column is now added as INT and nullable
+    },
     created_at: {
         type: DataTypes.DATE,
         allowNull: false,
