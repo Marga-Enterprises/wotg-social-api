@@ -118,7 +118,23 @@ User.init({
         allowNull: true,
         defaultValue: null,
     },
-    refreshToken: { type: DataTypes.TEXT, allowNull: true },
+    refreshToken: { 
+        type: DataTypes.TEXT, 
+        allowNull: true 
+    },
+    
+    // ✅ New Fields for Password Reset
+    reset_password_token: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        defaultValue: null,
+    },
+    reset_password_expires: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: null,
+    },
+
 }, {
     sequelize,
     modelName: 'User',
