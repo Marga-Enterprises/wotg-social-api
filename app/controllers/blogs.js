@@ -136,16 +136,16 @@ exports.uploadVideo = async (req, res) => {
         // Find the blog entry
         const blog = await Blogs.findByPk(id);
         if (!blog) {
-            return sendError(res, "Blog not found.");
+            return sendError(res, {}, "Blog not found.");
         }
 
         upload.single("file")(req, res, async (err) => {
             if (err) {
-                return sendError(res, "Video upload failed: " + err.message);
+                return sendError(res, err.message, "Video upload failed.");
             }
 
             if (!req.file) {
-                return sendError(res, "No video file uploaded.");
+                return sendError(res, {}, "No video file uploaded.");
             }
 
             const inputFilePath = req.file.path;
@@ -186,13 +186,12 @@ exports.uploadVideo = async (req, res) => {
                 })
                 .on("error", (error) => {
                     fs.unlinkSync(inputFilePath); // Delete failed conversion file
-                    console.log('[[[[UPLOAD ERROR]]]]', error);
-                    sendError(res, "Video conversion failed.");
+                    sendError(res, error, "Video conversion failed.");
                 })
                 .run();
         });
     } catch (error) {
-        sendError(res, error);
+        sendError(res, error, "Internal Server Error");
     }
 };
 
