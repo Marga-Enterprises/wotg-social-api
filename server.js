@@ -6,6 +6,8 @@ const express = require("express");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
+const compression = require("compression");
+
 const sequelize = require("./config/db");
 
 // Import Routes
@@ -16,6 +18,8 @@ const subscriptionRoutes = require("./app/routes/subscription");
 const userRoutes = require("./app/routes/user");
 const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
 const blogRoutes = require("./app/routes/blogs");
+const bibleRoutes = require("./app/routes/bible");
+
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -51,6 +55,7 @@ webPush.setVapidDetails(
 // Middleware
 app.use(express.json());
 app.use(cors());
+app.use(compression());
 
 // ✅ Use Routes
 app.use("/auth", authRoutes);
@@ -60,6 +65,7 @@ app.use("/messages", messageRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
 app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/blogs", blogRoutes);
+app.use("/bibles", bibleRoutes);
 app.use("/uploads", express.static("uploads"));
 
 
