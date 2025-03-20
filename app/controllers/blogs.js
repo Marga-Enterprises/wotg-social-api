@@ -291,6 +291,31 @@ exports.deleteVideo = async (req, res) => {
     }
 };
 
+exports.clearForBlogCacheForAdmin = async (req, res) => {
+    try {
+        console.log("🗑️ Clearing all blog-related cache...");
+
+        // ✅ Delete all paginated blogs cache
+        const keys = await redisClient.keys("blogs_page_*");
+        if (keys.length > 0) {
+            await redisClient.del(keys);
+            console.log("🗑️ Paginated blog cache cleared.");
+        }
+
+        // ✅ Delete individual blog caches
+        const blogKeys = await redisClient.keys("blog_*");
+        if (blogKeys.length > 0) {
+            await redisClient.del(blogKeys);
+            console.log("🗑️ Individual blog caches cleared.");
+        }
+
+        return res.json({ success: true, message: "Cache cleared successfully." });
+    } catch (error) {
+        console.error("❌ Error clearing blog cache:", error);
+        return res.status(500).json({ success: false, message: "Error clearing cache." });
+    }
+};
+
 // ✅ Utility Function to Clear Cache
 const clearBlogCache = async (blogId) => {
     try {
