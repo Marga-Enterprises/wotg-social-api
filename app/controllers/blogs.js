@@ -161,7 +161,6 @@ exports.uploadVideo = async (req, res) => {
 
     const decodedToken = decodeToken(token);
     const userId = decodedToken.user.id; // ✅ Extract uploader's ID
-
     const { id } = req.params; // Get blog ID from URL
 
     try {
@@ -184,44 +183,51 @@ exports.uploadVideo = async (req, res) => {
             const originalFileName = path.basename(inputFilePath);
             const fileExt = path.extname(originalFileName).toLowerCase();
 
-            // ✅ Define the WebM output filename
-            const webmFileName = `${path.basename(originalFileName, fileExt)}.webm`;
+            // ✅ Generate a unique WebM filename to avoid overwriting
+            const webmFileName = `converted-${Date.now()}.webm`;
             const webmFilePath = path.join(__dirname, "../../uploads", webmFileName);
 
             // ✅ Convert any video format to WebM using FFmpeg
             ffmpeg(inputFilePath)
-                .output(webmFilePath)
+                .output(webmFilePath) // ✅ Ensure different output filename
                 .videoCodec("libvpx-vp9")
                 .audioCodec("libopus")
                 .on("end", async () => {
-                    fs.unlinkSync(inputFilePath); // ✅ Delete original file
+                    try {
+                        fs.unlinkSync(inputFilePath); // ✅ Delete original file after conversion
 
-                    // ✅ Delete old WebM file if it exists
-                    if (blog.blog_video) {
-                        const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
-                        if (fs.existsSync(oldFilePath)) {
-                            fs.unlinkSync(oldFilePath);
+                        // ✅ Delete old WebM file if it exists
+                        if (blog.blog_video) {
+                            const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
+                            if (fs.existsSync(oldFilePath)) {
+                                fs.unlinkSync(oldFilePath);
+                            }
                         }
+
+                        // ✅ Update blog with new WebM filename and uploader ID
+                        blog.blog_video = webmFileName;
+                        blog.blog_uploaded_by = userId; // ✅ Store uploader's ID
+                        await blog.save();
+
+                        // ✅ Clear Redis Cache for this blog & paginated blogs
+                        await clearBlogCache(id);
+
+                        sendSuccess(res, {
+                            message: "WebM video uploaded successfully.",
+                            blog_id: blog.id,
+                            uploaded_by: userId, // ✅ Return uploader ID in response
+                            video_url: webmFileName,
+                        });
+                    } catch (error) {
+                        console.error("Error after conversion:", error);
+                        sendError(res, error, "Failed to process video after conversion.");
                     }
-
-                    // ✅ Update blog with new WebM filename and uploader ID
-                    blog.blog_video = webmFileName;
-                    blog.blog_uploaded_by = userId; // ✅ Store uploader's ID
-                    await blog.save();
-
-                    // ✅ Clear Redis Cache for this blog & paginated blogs
-                    await clearBlogCache(id);
-
-                    sendSuccess(res, {
-                        message: "WebM video uploaded successfully.",
-                        blog_id: blog.id,
-                        uploaded_by: userId, // ✅ Return uploader ID in response
-                        video_url: webmFileName,
-                    });
                 })
                 .on("error", (error) => {
-                    console.log('[[[[[[[[[[Error converting video:]]]]]]]]]]', error);
-                    fs.unlinkSync(inputFilePath); // Delete failed conversion file
+                    console.error("[[Error converting video]]:", error);
+                    if (fs.existsSync(inputFilePath)) {
+                        fs.unlinkSync(inputFilePath); // ✅ Delete failed conversion file
+                    }
                     sendError(res, error, "Video conversion failed.");
                 })
                 .run();
