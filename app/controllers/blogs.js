@@ -11,8 +11,11 @@ const {
     sendSuccess,
     getToken,
     sendErrorUnauthorized,
-    decodeToken
+    decodeToken,
+    processVideo
 } = require("../../utils/methods");
+
+const { clearBlogCache } = require("../../utils/clearBlogCache");
 
 const moment = require("moment-timezone");
 
@@ -160,82 +163,35 @@ exports.uploadVideo = async (req, res) => {
     }
 
     const decodedToken = decodeToken(token);
-    const userId = decodedToken.user.id; // ✅ Extract uploader's ID
-    const { id } = req.params; // Get blog ID from URL
+    const userId = decodedToken.user.id;
+    const { id } = req.params;
 
     try {
-        // ✅ Find the blog entry
         const blog = await Blogs.findByPk(id);
-        if (!blog) {
-            return sendError(res, {}, "Blog not found.");
-        }
+        if (!blog) return sendError(res, {}, "Blog not found.");
 
         upload.single("file")(req, res, async (err) => {
-            if (err) {
-                return sendError(res, err.message, "Video upload failed.");
-            }
-
-            if (!req.file) {
-                return sendError(res, {}, "No video file uploaded.");
+            if (err || !req.file) {
+                return sendError(res, {}, "Video upload failed or no file.");
             }
 
             const inputFilePath = req.file.path;
-            const originalFileName = path.basename(inputFilePath);
-            const fileExt = path.extname(originalFileName).toLowerCase();
 
-            // ✅ Generate a unique WebM filename to avoid overwriting
-            const webmFileName = `converted-${Date.now()}.webm`;
-            const webmFilePath = path.join(__dirname, "../../uploads", webmFileName);
+            // ✅ Respond to user immediately
+            sendSuccess(res, {
+                message: "Video received. Processing...",
+                blog_id: blog.id,
+                uploaded_by: userId,
+            });
 
-            // ✅ Convert any video format to WebM using FFmpeg
-            ffmpeg(inputFilePath)
-                .output(webmFilePath) // ✅ Ensure different output filename
-                .videoCodec("libvpx-vp9")
-                .audioCodec("libopus")
-                .on("end", async () => {
-                    try {
-                        fs.unlinkSync(inputFilePath); // ✅ Delete original file after conversion
-
-                        // ✅ Delete old WebM file if it exists
-                        if (blog.blog_video) {
-                            const oldFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
-                            if (fs.existsSync(oldFilePath)) {
-                                fs.unlinkSync(oldFilePath);
-                            }
-                        }
-
-                        // ✅ Update blog with new WebM filename and uploader ID
-                        blog.blog_video = webmFileName;
-                        blog.blog_uploaded_by = userId; // ✅ Store uploader's ID
-                        await blog.save();
-
-                        // ✅ Clear Redis Cache for this blog & paginated blogs
-                        await clearBlogCache(id);
-
-                        sendSuccess(res, {
-                            message: "WebM video uploaded successfully.",
-                            blog_id: blog.id,
-                            uploaded_by: userId, // ✅ Return uploader ID in response
-                            video_url: webmFileName,
-                        });
-                    } catch (error) {
-                        console.error("Error after conversion:", error);
-                        sendError(res, error, "Failed to process video after conversion.");
-                    }
-                })
-                .on("error", (error) => {
-                    console.error("[[Error converting video]]:", error);
-                    if (fs.existsSync(inputFilePath)) {
-                        fs.unlinkSync(inputFilePath); // ✅ Delete failed conversion file
-                    }
-                    sendError(res, error, "Video conversion failed.");
-                })
-                .run();
+            // 🔄 Continue processing in background
+            processVideo(inputFilePath, blog, userId, id);
         });
     } catch (error) {
         sendError(res, error, "Internal Server Error");
     }
 };
+
 
 
 exports.deleteVideo = async (req, res) => {
@@ -323,26 +279,6 @@ exports.clearForBlogCacheForAdmin = async (req, res) => {
     }
 };
 
-// ✅ Utility Function to Clear Cache
-const clearBlogCache = async (blogId) => {
-    try {
-        console.log(`🗑️ Clearing cache for blog ${blogId} and paginated blogs...`);
-
-        // ✅ Delete the specific blog cache
-        await redisClient.del(`blog_${blogId}`);
-
-        // ✅ Delete all paginated blogs cache
-        const keys = await redisClient.keys("blogs_page_*");
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-            console.log("🗑️ Paginated blog cache cleared.");
-        }
-
-        console.log(`✅ Cache cleared for blog ${blogId}`);
-    } catch (error) {
-        console.error("❌ Error clearing blog cache:", error);
-    }
-};
 
 
 

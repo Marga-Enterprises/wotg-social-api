@@ -5,6 +5,10 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
+const fs = require("fs");
+const ffmpeg = require("fluent-ffmpeg");
+
+const { clearBlogCache } = require('./clearBlogCache');
 
 const randomAuthor = () => {
   const l = authors[Math.floor(Math.random() * authors.length)];
@@ -159,3 +163,48 @@ exports.decodeToken = (token) => {
       throw err; // ✅ If another error occurs, throw it
   }
 };
+
+exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
+  const webmFileName = `converted-${Date.now()}.webm`;
+  const webmFilePath = path.join(__dirname, "../uploads", webmFileName);
+
+  ffmpeg(inputFilePath)
+      .videoCodec("libvpx")
+      .audioCodec("libvorbis")
+      .size('?x360') // ✅ Resize to 360p
+      .outputOptions([
+          "-b:v 500k",        // ✅ Lower bitrate for faster encoding
+          "-deadline realtime",
+          "-cpu-used 5"
+      ])
+      .output(webmFilePath)
+      .on("end", async () => {
+          try {
+              // ✅ Delete original file
+              fs.unlinkSync(inputFilePath);
+
+              // ✅ Delete old converted file if exists
+              if (blog.blog_video) {
+                  const oldPath = path.join(__dirname, "../uploads", blog.blog_video);
+                  if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+              }
+
+              // ✅ Update blog
+              blog.blog_video = webmFileName;
+              blog.blog_uploaded_by = userId;
+              await blog.save();
+
+              await clearBlogCache(blogId);
+
+              console.log("✅ Video conversion and save complete:", webmFileName);
+          } catch (error) {
+              console.error("❌ Post-conversion error:", error);
+          }
+      })
+      .on("error", (error) => {
+          console.error("❌ FFmpeg conversion failed:", error);
+          if (fs.existsSync(inputFilePath)) fs.unlinkSync(inputFilePath);
+      })
+      .run();
+};
+
