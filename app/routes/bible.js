@@ -5,6 +5,6 @@ const router = express.Router();
 
 // ✅ Route to get all Bibles (Requires authentication)
 router.get("/", bibleController.list);
-router.get("/:bibleId", bibleController.getById);
+// router.post("/translate", bibleController.translate);
 
 module.exports = router;
