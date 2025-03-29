@@ -11,6 +11,8 @@ const {
 const BibleVerseWeb = require("../models/BibleVerseWeb");
 const { Sequelize } = require("sequelize");
 const sequelize = require("../../config/db");
+
+/*
 const { OpenAI } = require("openai");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -19,6 +21,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
+*/
 
 
 // 📖 Fetch verses by language, book, chapter (strict required + cache)
