@@ -27,6 +27,10 @@ BibleVerseWeb.init({
         type: DataTypes.TEXT('long'),
         allowNull: false,
     },
+    commentary: {
+        type: DataTypes.TEXT('long'),
+        allowNull: true, // You can set this to false and add a defaultValue if needed
+    },
     language: {
         type: DataTypes.STRING(10),
         allowNull: true,
