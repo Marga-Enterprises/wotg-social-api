@@ -19,6 +19,7 @@ const userRoutes = require("./app/routes/user");
 const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API routes
 const blogRoutes = require("./app/routes/blogs");
 const bibleRoutes = require("./app/routes/bible");
+const journalRoutes = require("./app/routes/journal");
 
 
 const app = express();
@@ -66,6 +67,7 @@ app.use("/subscriptions", subscriptionRoutes);
 app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/blogs", blogRoutes);
 app.use("/bibles", bibleRoutes);
+app.use("/journals", journalRoutes);
 app.use("/uploads", express.static("uploads"));
 
 
