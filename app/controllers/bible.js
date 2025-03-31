@@ -109,7 +109,7 @@ exports.list = async (req, res) => {
         }
 
         const verses = await BibleVerseWeb.findAll({
-            attributes: ['verse', 'text'],
+            attributes: ['verse', 'text', 'commentary'],
             where: {
                 language: lang,
                 book: bookNum,
