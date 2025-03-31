@@ -10,54 +10,76 @@ const {
 const redisClient = require("../../config/redis");
 
 const { clearJournalCache } = require("../../utils/clearBlogCache");
+const { Op } = require("sequelize");
 
-// 🔄 List all journals of the current user with pagination + Redis
 exports.list = async (req, res) => {
   const token = getToken(req.headers);
   if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
 
   try {
-    const user = decodeToken(token);
-    const pageIndex = Math.max(parseInt(req.query.pageIndex) || 0, 0);
-    const pageSize = Math.min(parseInt(req.query.pageSize) || 10, 100);
-    const offset = pageIndex * pageSize;
+    const decoded = decodeToken(token);
+    const viewerId = parseInt(decoded.user.id);
 
-    const cacheKey = `journals_${user.id}_page_${pageIndex}_${pageSize}`;
+    let { pageIndex, pageSize, userId } = req.query;
+
+    // ✅ Validate pagination parameters
+    if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize) || pageIndex <= 0 || pageSize <= 0) {
+      return sendError(res, "", "Missing or invalid query parameters: pageIndex and pageSize must be > 0.");
+    }
+
+    pageIndex = parseInt(pageIndex);
+    pageSize = parseInt(pageSize);
+    const offset = (pageIndex - 1) * pageSize;
+    const limit = pageSize;
+
+    // ✅ Build dynamic Redis cache key
+    const cacheKey = `journals:page:${pageIndex}:${pageSize}${userId ? `:user:${userId}` : ""}:viewer:${viewerId}`;
     const cached = await redisClient.get(cacheKey);
     if (cached) {
       return sendSuccess(res, JSON.parse(cached), "From cache");
     }
 
-    // 🔍 Dynamic where clause: Only show private journals of the current user, but all public ones
+    // ✅ Universal filter respecting privacy
     const where = {
       [Op.or]: [
-        { private: false },
-        { userId: user.id }
+        { private: false },          // Public journals are visible to everyone
+        { userId: viewerId }         // Private journals visible only to the owner
       ]
     };
+
+    // ✅ Optional filter: only show journals from a specific user
+    if (userId) {
+      where.userId = parseInt(userId);
+    }
 
     const { count, rows } = await Journal.findAndCountAll({
       where,
       order: [["createdAt", "DESC"]],
       offset,
-      limit: pageSize,
+      limit,
       raw: true
     });
 
+    const totalPages = Math.ceil(count / pageSize);
+
     const result = {
-      items: rows,
-      total: count,
+      totalRecords: count,
       pageIndex,
-      pageSize
+      pageSize,
+      totalPages,
+      journals: rows
     };
 
-    await redisClient.set(cacheKey, JSON.stringify(result), 'EX', 3600);
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(result)); // Cache for 1 hour
+
     return sendSuccess(res, result);
   } catch (error) {
-    console.error("List error:", error.message);
+    console.error("📛 Journal list error:", error.message);
     return sendError(res, "", "Failed to fetch journals.");
   }
 };
+
+
 
 
 // ✏️ Create a journal
@@ -67,21 +89,22 @@ exports.create = async (req, res) => {
 
   try {
     const user = decodeToken(token);
-    const { book, chapter, verse, content } = req.body;
+    const { book, chapter, verse, content, language } = req.body;
 
-    if (!book || !chapter || !verse || !content) {
+    if (!book || !chapter || !verse || !content || !language) {
       return sendError(res, "", "All fields are required.");
     }
 
     const journal = await Journal.create({
-      userId: user.id,
+      userId: user.user.id,
       book,
       chapter,
       verse,
-      content
+      content,
+      language
     });
 
-    await clearJournalCache(user.id);
+    await clearJournalCache();
     return sendSuccess(res, journal, "Journal created successfully.");
   } catch (error) {
     console.error("Create error:", error.message);
@@ -96,13 +119,26 @@ exports.getById = async (req, res) => {
 
   try {
     const user = decodeToken(token);
+    const viewerId = user.user.id;
     const { id } = req.params;
+    const cacheKey = `journal_${viewerId}_${id}`;
 
+    // 🔍 Check cache first
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+
+      // 🔐 If cached journal is private and not owned by viewer, deny access
+      if (parsed.private && parsed.userId !== viewerId) {
+        return sendErrorUnauthorized(res, "", "You are not authorized to view this journal.");
+      }
+
+      return sendSuccess(res, parsed, "From cache");
+    }
+
+    // 🔍 Fetch from DB
     const journal = await Journal.findOne({
-      where: {
-        id,
-        userId: user.id
-      },
+      where: { id },
       raw: true
     });
 
@@ -110,12 +146,22 @@ exports.getById = async (req, res) => {
       return sendError(res, "", "Journal not found.");
     }
 
+    // 🔐 Check if viewer is allowed to access this journal
+    if (journal.private && journal.userId !== viewerId) {
+      return sendErrorUnauthorized(res, "", "You are not authorized to view this journal.");
+    }
+
+    // ✅ Cache for 1 hour
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(journal));
+
     return sendSuccess(res, journal);
   } catch (error) {
     console.error("GetById error:", error.message);
     return sendError(res, "", "Failed to fetch journal.");
   }
 };
+
+
 
 // 📝 Update a journal
 exports.update = async (req, res) => {
@@ -125,29 +171,39 @@ exports.update = async (req, res) => {
   try {
     const user = decodeToken(token);
     const { id } = req.params;
-    const { content } = req.body;
+    const { content, private: isPrivate } = req.body;
 
-    const [updated] = await Journal.update(
-      { content },
-      {
-        where: {
-          id,
-          userId: user.id
-        }
-      }
-    );
+    // 🔍 Find the journal by ID
+    const journal = await Journal.findOne({ where: { id }, raw: true });
 
-    if (!updated) {
-      return sendError(res, "", "Journal not found or not updated.");
+    if (!journal) {
+      return sendError(res, "", "Journal not found.");
     }
 
-    await clearJournalCache(user.id);
-    return sendSuccess(res, { id, content }, "Journal updated successfully.");
+    // 🔐 Check ownership
+    if (journal.userId !== user.user.id) {
+      return sendErrorUnauthorized(res, "", "You are not authorized to update this journal.");
+    }
+
+    // 📝 Prepare fields to update
+    const updateData = {};
+    if (typeof content === "string") updateData.content = content;
+    if (isPrivate !== undefined) updateData.private = !!parseInt(isPrivate); // Convert 0 or 1 to boolean
+
+    // 🚀 Perform update
+    await Journal.update(updateData, { where: { id } });
+
+    // 🧹 Clear journal-specific cache (for all viewers)
+    await clearJournalCache(id);
+
+    return sendSuccess(res, { id, ...updateData }, "Journal updated successfully.");
   } catch (error) {
     console.error("Update error:", error.message);
     return sendError(res, "", "Failed to update journal.");
   }
 };
+
+
 
 // ❌ Delete a journal
 exports.delete = async (req, res) => {
@@ -158,21 +214,29 @@ exports.delete = async (req, res) => {
     const user = decodeToken(token);
     const { id } = req.params;
 
-    const deleted = await Journal.destroy({
+    // 🔍 Check if the journal exists and is owned by the user
+    const journal = await Journal.findOne({
       where: {
         id,
-        userId: user.id
-      }
+        userId: user.user.id
+      },
+      raw: true
     });
 
-    if (!deleted) {
-      return sendError(res, "", "Journal not found or already deleted.");
+    if (!journal) {
+      return sendErrorUnauthorized(res, "", "You are not authorized to delete this journal or it doesn't exist.");
     }
 
-    await clearJournalCache(user.id);
+    // ❌ Delete the journal
+    await Journal.destroy({ where: { id } });
+
+    // 🧹 Clear related cache
+    await clearJournalCache(id); // Pass journal ID to clear specific journal cache too
+
     return sendSuccess(res, { id }, "Journal deleted successfully.");
   } catch (error) {
     console.error("Delete error:", error.message);
     return sendError(res, "", "Failed to delete journal.");
   }
 };
+

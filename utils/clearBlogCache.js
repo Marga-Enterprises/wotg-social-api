@@ -20,19 +20,32 @@ exports.clearBlogCache = async (blogId) => {
     }
 };
 
-exports.clearJournalCache = async (userId) => {
+exports.clearJournalCache = async (journalId) => {
     try {
-        console.log(`🗑️ Clearing cache for user ${userId}'s journals...`);
-
-        // ✅ Delete all paginated journal caches for this user
-        const keys = await redisClient.keys(`journals:${userId}:page*`);
-        if (keys.length > 0) {
-        await redisClient.del(keys);
-        console.log("🗑️ Paginated journal cache cleared.");
-        }
-
-        console.log(`✅ Cache cleared for journals of user ${userId}`);
+      console.log("🧹 Clearing journal cache...");
+  
+      const pattern = "journals:page:*";
+      const filteredPattern = "journals:page:*:user:*:viewer:*";
+      const journalKeys = journalId ? await redisClient.keys(`journal_*_${journalId}`) : [];
+  
+      const allPaginatedKeys = await redisClient.keys(pattern);
+      const allFilteredKeys = await redisClient.keys(filteredPattern);
+  
+      const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...journalKeys])];
+  
+      if (allKeys.length > 0) {
+        await redisClient.del(allKeys);
+        console.log(`🗑️ Cleared ${allKeys.length} journal cache entries.`);
+      } else {
+        console.log("ℹ️ No matching journal cache keys found.");
+      }
+  
+      console.log("✅ Journal cache cleared.");
     } catch (error) {
-        console.error("❌ Error clearing journal cache:", error);
+      console.error("❌ Error clearing journal cache:", error);
     }
-};
+  };
+  
+
+
+

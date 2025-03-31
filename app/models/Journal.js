@@ -23,6 +23,11 @@ Journal.init({
     type: DataTypes.TINYINT.UNSIGNED,
     allowNull: false
   },
+  language: {
+    type: DataTypes.STRING(10),
+    allowNull: false,
+    defaultValue: 'eng'
+  },
   userId: {
     type: DataTypes.INTEGER.UNSIGNED,
     allowNull: false

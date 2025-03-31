@@ -135,6 +135,61 @@ exports.list = async (req, res) => {
     }
 };
 
+exports.getVerse = async (req, res) => {
+  try {
+    const { book, chapter, verse, language } = req.params;
+
+    const bookNum = parseInt(book);
+    const chapterNum = parseInt(chapter);
+    const verseNum = parseInt(verse);
+    const lang = language?.trim().toLowerCase();
+
+    if (
+      isNaN(bookNum) || isNaN(chapterNum) || isNaN(verseNum) ||
+      !lang || lang.length > 10
+    ) {
+      return sendError(res, "", "Invalid parameters.");
+    }
+
+    const cacheKey = `bible:verse:${lang}:${bookNum}:${chapterNum}:${verseNum}`;
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      return sendSuccess(res, JSON.parse(cached), "From cache");
+    }
+
+    const bibleVerse = await BibleVerseWeb.findOne({
+      where: {
+        book: bookNum,
+        chapter: chapterNum,
+        verse: verseNum,
+        language: lang
+      },
+      raw: true
+    });
+
+    if (!bibleVerse) {
+      return sendError(res, "", "Verse not found.");
+    }
+
+    // Clean up commentary if needed
+    const formattedCommentary = bibleVerse.commentary?.trim() || null;
+
+    const result = {
+      book: bibleVerse.book,
+      chapter: bibleVerse.chapter,
+      verse: bibleVerse.verse,
+      text: bibleVerse.text,
+      commentary: formattedCommentary
+    };
+
+    await redisClient.set(cacheKey, JSON.stringify(result), "EX", 3600); // 1 hour cache
+    return sendSuccess(res, result);
+  } catch (error) {
+    console.error("getVerse error:", error.message);
+    return sendError(res, "", "Failed to fetch Bible verse.");
+  }
+};
+
 /*
 exports.translate = async (req, res) => {
     const token = getToken(req.headers);
