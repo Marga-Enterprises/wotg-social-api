@@ -79,9 +79,6 @@ exports.list = async (req, res) => {
   }
 };
 
-
-
-
 // ✏️ Create a journal
 exports.create = async (req, res) => {
   const token = getToken(req.headers);
@@ -89,9 +86,9 @@ exports.create = async (req, res) => {
 
   try {
     const user = decodeToken(token);
-    const { book, chapter, verse, content, language } = req.body;
+    const { book, chapter, verse, language, question1, question2, question3 } = req.body;
 
-    if (!book || !chapter || !verse || !content || !language) {
+    if (!book || !chapter || !verse || !language || !question1 || !question2 || !question3) {
       return sendError(res, "", "All fields are required.");
     }
 
@@ -100,8 +97,10 @@ exports.create = async (req, res) => {
       book,
       chapter,
       verse,
-      content,
-      language
+      language,
+      question1,
+      question2,
+      question3
     });
 
     await clearJournalCache();
@@ -161,8 +160,6 @@ exports.getById = async (req, res) => {
   }
 };
 
-
-
 // 📝 Update a journal
 exports.update = async (req, res) => {
   const token = getToken(req.headers);
@@ -171,7 +168,7 @@ exports.update = async (req, res) => {
   try {
     const user = decodeToken(token);
     const { id } = req.params;
-    const { content, private: isPrivate } = req.body;
+    const { question1, question2, question3, private: isPrivate } = req.body;
 
     // 🔍 Find the journal by ID
     const journal = await Journal.findOne({ where: { id }, raw: true });
@@ -187,8 +184,10 @@ exports.update = async (req, res) => {
 
     // 📝 Prepare fields to update
     const updateData = {};
-    if (typeof content === "string") updateData.content = content;
-    if (isPrivate !== undefined) updateData.private = !!parseInt(isPrivate); // Convert 0 or 1 to boolean
+    if (typeof question1 === "string") updateData.question1 = question1;
+    if (typeof question2 === "string") updateData.question2 = question2;
+    if (typeof question3 === "string") updateData.question3 = question3;
+    if (isPrivate !== undefined) updateData.private = !!parseInt(isPrivate);
 
     // 🚀 Perform update
     await Journal.update(updateData, { where: { id } });
@@ -202,7 +201,6 @@ exports.update = async (req, res) => {
     return sendError(res, "", "Failed to update journal.");
   }
 };
-
 
 
 // ❌ Delete a journal

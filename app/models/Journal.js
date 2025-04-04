@@ -32,7 +32,15 @@ Journal.init({
     type: DataTypes.INTEGER.UNSIGNED,
     allowNull: false
   },
-  content: {
+  question1: {
+    type: DataTypes.TEXT("long"),
+    allowNull: false
+  },
+  question2: {
+    type: DataTypes.TEXT("long"),
+    allowNull: false
+  },
+  question3: {
     type: DataTypes.TEXT("long"),
     allowNull: false
   },
