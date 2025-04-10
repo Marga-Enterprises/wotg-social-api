@@ -6,6 +6,7 @@ const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
 const fs = require("fs");
+const { exec } = require("child_process");
 const ffmpeg = require("fluent-ffmpeg");
 
 const { clearBlogCache } = require('./clearBlogCache');
@@ -206,5 +207,38 @@ exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
           if (fs.existsSync(inputFilePath)) fs.unlinkSync(inputFilePath);
       })
       .run();
+};
+
+exports.processImage = (inputFilePath) => {
+  return new Promise((resolve, reject) => {
+      const ext = path.extname(inputFilePath).toLowerCase();
+      const isImage = [".jpg", ".jpeg", ".png"].includes(ext);
+
+      if (!isImage) {
+          console.log("ℹ️ Not a supported image file, skipping conversion.");
+          return resolve(null); // No conversion, keep original
+      }
+
+      const outputFilename = `profile-${Date.now()}.webp`;
+      const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
+      const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -q:v 80 "${outputPath}"`;
+
+      exec(ffmpegCmd, (err, stdout, stderr) => {
+          if (err) {
+              console.error("❌ FFmpeg image conversion failed:", err);
+              return reject(err);
+          }
+
+          // Delete original image file
+          if (fs.existsSync(inputFilePath)) {
+              fs.unlink(inputFilePath, (err) => {
+                  if (err) console.warn("⚠️ Failed to delete original image:", err);
+              });
+          }
+
+          console.log("✅ Image converted to webp:", outputFilename);
+          resolve(outputFilename);
+      });
+  });
 };
 

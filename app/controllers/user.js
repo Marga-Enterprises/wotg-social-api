@@ -10,6 +10,7 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
+    processImage
 } = require("../../utils/methods");
 
 exports.list = async (req, res) => {
@@ -100,7 +101,7 @@ exports.get = async (req, res) => {
 exports.update = async (req, res) => {
     upload.single("file")(req, res, async (err) => {
         if (err) {
-            console.error("Error uploading file:", err);
+            console.error("❌ Error uploading file:", err);
             return sendError(res, err, "Failed to upload file.");
         }
 
@@ -124,11 +125,9 @@ exports.update = async (req, res) => {
                 return sendErrorUnauthorized(res, "", "You are not authorized to update this user.");
             }
 
-            // ✅ Delete old profile picture if user uploads a new one
+            // ✅ Delete old profile picture if new one uploaded
             if (req.file && user.user_profile_picture) {
                 const oldImagePath = path.join(__dirname, "../uploads", user.user_profile_picture);
-                
-                // Check if file exists before deleting
                 if (fs.existsSync(oldImagePath)) {
                     fs.unlink(oldImagePath, (err) => {
                         if (err) console.error("❌ Error deleting old profile picture:", err);
@@ -137,18 +136,28 @@ exports.update = async (req, res) => {
                 }
             }
 
-            // ✅ Update only provided fields
+            // ✅ Update fields
             if (user_fname) user.user_fname = user_fname;
             if (user_lname) user.user_lname = user_lname;
             if (email) user.email = email;
             if (password) user.password = password;
-            if (req.file) user.user_profile_picture = req.file.filename;
+
+            if (req.file) {
+                try {
+                    const convertedFilename = await processImage(req.file.path);
+
+                    // If image was converted to webp, use it; else fallback to original filename
+                    user.user_profile_picture = convertedFilename || req.file.filename;
+                } catch (convErr) {
+                    console.error("❌ Image processing failed:", convErr);
+                    return sendError(res, convErr, "Image processing failed.");
+                }
+            }
 
             await user.save();
-
             return sendSuccess(res, user);
         } catch (error) {
-            console.error("Error updating user:", error);
+            console.error("❌ Error updating user:", error);
             return sendError(res, error, "Failed to update user.");
         }
     });
