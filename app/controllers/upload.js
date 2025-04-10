@@ -5,7 +5,7 @@ const fs = require("fs");
 // Determine upload directory based on NODE_ENV
 const uploadDir =
     process.env.NODE_ENV === "development"
-        ? "../../uploads"
+        ? path.resolve(__dirname, "../../uploads") // resolves to absolute path
         : "/var/www/community.wotgonline.com/wotg-social-api/uploads";
 
 // Ensure "uploads" directory exists
