@@ -8,6 +8,8 @@ const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
 const upload = require('./upload');
 
+const path = require('path');
+
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
 const {
@@ -151,148 +153,268 @@ exports.getMessagesByChatroom = async (req, res, io) => {
 
 
 // Save a new message and broadcast it
-exports.sendMessage = async (req, res, io) => {
-    // Use the multer middleware for handling file uploads
-    upload.single('file')(req, res, async (err) => {
-        if (err) {
-            console.error('File upload error:', err);
-            return sendError(res, err, 'Failed to upload file.', 500);
-        }
+exports.sendTextMessage = async (req, res, io) => {
+  const token = getToken(req.headers);
+  if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
-        const token = getToken(req.headers);
-        if (!token) {
-            return sendErrorUnauthorized(res, '', 'Please login first.');
-        }
+  const { content, senderId, chatroomId } = req.body;
 
-        const { senderId, chatroomId } = req.body;
+  if (!content || !senderId || !chatroomId) {
+    return sendError(res, '', 'Missing required fields.');
+  }
 
-        // Check if a file was uploaded
-        const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
-        try {
-            // If a file is uploaded, use the file URL as the content
-            const content = fileUrl || req.body.content;
-
-            // Save the new message with or without file URL
-            const message = await Message.create({
-                content,
-                senderId,
-                chatroomId,
-                fileUrl, // Save file URL if present
-            });
-
-            // Fetch the message with sender details to return in the response
-            const fullMessage = await Message.findOne({
-                where: { id: message.id },
-                include: [
-                    {
-                        model: User,
-                        as: 'sender',
-                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
-                    },
-                ],
-            });
-
-            if (io) {
-                io.to(chatroomId).emit('new_message', fullMessage);
-            }
-
-            // Process the participants and handle unread status, notifications, etc.
-            const participants = await Participant.findAll({
-                where: { chatRoomId: chatroomId },
-                include: [
-                    {
-                        model: User,
-                        as: 'user',
-                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
-                    },
-                ],
-            });
-
-            const filteredParticipants = participants.filter(
-                (participant) => participant.user.id !== senderId
-            );
-
-            const readStatusPromises = filteredParticipants.map((participant) =>
-                MessageReadStatus.create({
-                    messageId: message.id,
-                    userId: participant.user.id,
-                    read: false, // Default to "unread"
-                })
-            );
-
-            await Promise.all(readStatusPromises);
-
-            for (const participant of filteredParticipants) {
-                const unreadCount = await MessageReadStatus.count({
-                    where: {
-                        userId: participant.user.id,
-                        read: false,
-                    },
-                    include: [
-                        {
-                            model: Message,
-                            as: 'message',
-                            attributes: [],
-                            where: { chatroomId },
-                        },
-                    ],
-                });
-
-                io.to(`user_${participant.user.id}`).emit('unread_update', {
-                    chatroomId,
-                    unreadCount,
-                });
-            }
-
-            // 🔥 FCM Push Notification to Participants 🔥
-            const pushPromises = filteredParticipants.map(async (participant) => {
-                // Fetch all subscriptions for the user
-                const subscriptions = await Subscription.findAll({
-                    where: { userId: participant.user.id },
-                });
-
-                if (subscriptions.length > 0) {
-                    // Send notifications to all subscribed devices
-                    const sendPromises = subscriptions.map(async (subscription) => {
-                        try {
-                            let subscriptionData = subscription.subscription;
-
-                            if (typeof subscriptionData === "string") {
-                                try {
-                                    subscriptionData = JSON.parse(subscriptionData); // Convert string to object
-                                } catch (error) {
-                                    console.error("Error parsing subscription JSON:", error);
-                                }
-                            }
-                            
-                            const fcmToken = subscriptionData?.fcmToken; // Access safely
-                            
-                            if (fcmToken) {
-                                await sendNotification(
-                                    fcmToken,
-                                    `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                                    content
-                                );
-                            }
-                        } catch (error) {
-                            console.error('Error sending push notification:', error);
-                        }
-                    });
-
-                    // Wait for all notifications to complete
-                    await Promise.all(sendPromises);
-                }
-            });
-
-            await Promise.all(pushPromises);
-
-            return sendSuccess(res, fullMessage);
-        } catch (error) {
-            console.error('Error sending message:', error);
-            return sendError(res, error, 'Failed to send message.', 500);
-        }
+  try {
+    // Save message
+    const message = await Message.create({
+      content,
+      senderId,
+      chatroomId
     });
+
+    // Fetch with sender details
+    const fullMessage = await Message.findOne({
+      where: { id: message.id },
+      include: [
+        {
+          model: User,
+          as: 'sender',
+          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+        }
+      ]
+    });
+
+    // Emit to chatroom
+    io.to(chatroomId).emit('new_message', fullMessage);
+
+    // Get participants
+    const participants = await Participant.findAll({
+      where: { chatRoomId: chatroomId },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+        }
+      ]
+    });
+
+    const filteredParticipants = participants.filter(
+      (participant) => participant.user.id !== senderId
+    );
+
+    // Create read status
+    const readStatusPromises = filteredParticipants.map((participant) =>
+      MessageReadStatus.create({
+        messageId: message.id,
+        userId: participant.user.id,
+        read: false
+      })
+    );
+
+    await Promise.all(readStatusPromises);
+
+    // Emit unread updates
+    for (const participant of filteredParticipants) {
+      const unreadCount = await MessageReadStatus.count({
+        where: {
+          userId: participant.user.id,
+          read: false
+        },
+        include: [
+          {
+            model: Message,
+            as: 'message',
+            attributes: [],
+            where: { chatroomId }
+          }
+        ]
+      });
+
+      io.to(`user_${participant.user.id}`).emit('unread_update', {
+        chatroomId,
+        unreadCount
+      });
+    }
+
+    // Push notification to each participant
+    const pushPromises = filteredParticipants.map(async (participant) => {
+      const subscriptions = await Subscription.findAll({
+        where: { userId: participant.user.id }
+      });
+
+      if (subscriptions.length > 0) {
+        const sendPromises = subscriptions.map(async (subscription) => {
+          try {
+            let subscriptionData = subscription.subscription;
+            if (typeof subscriptionData === 'string') {
+              subscriptionData = JSON.parse(subscriptionData);
+            }
+
+            const fcmToken = subscriptionData?.fcmToken;
+            if (fcmToken) {
+              await sendNotification(
+                fcmToken,
+                `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                content
+              );
+            }
+          } catch (error) {
+            console.error('Push notification error:', error);
+          }
+        });
+
+        await Promise.all(sendPromises);
+      }
+    });
+
+    await Promise.all(pushPromises);
+
+    return sendSuccess(res, fullMessage);
+  } catch (error) {
+    console.error('Error sending text message:', error);
+    return sendError(res, error, 'Failed to send text message.');
+  }
+};
+
+exports.sendFileMessage = async (req, res, io) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      console.error('File upload error:', err);
+      return sendError(res, err, 'Failed to upload file.', 500);
+    }
+
+    const token = getToken(req.headers);
+    if (!token) {
+      return sendErrorUnauthorized(res, '', 'Please login first.');
+    }
+
+    const { senderId, chatroomId } = req.body;
+    if (!req.file || !senderId || !chatroomId) {
+      return sendError(res, '', 'Missing file or required fields.');
+    }
+
+    let finalFileName = req.file.filename;
+    const ext = path.extname(req.file.originalname).toLowerCase();
+
+    // Convert image if necessary
+    if ([".jpg", ".jpeg", ".png"].includes(ext)) {
+      try {
+        const converted = await processImage(req.file.path);
+        if (converted) finalFileName = converted;
+      } catch (conversionError) {
+        console.error('Image conversion failed:', conversionError);
+      }
+    }
+
+    const fileUrl = `/uploads/${finalFileName}`;
+    const content = fileUrl;
+
+    try {
+      const message = await Message.create({
+        content,
+        fileUrl,
+        senderId,
+        chatroomId
+      });
+
+      const fullMessage = await Message.findOne({
+        where: { id: message.id },
+        include: [
+          {
+            model: User,
+            as: 'sender',
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+          }
+        ]
+      });
+
+      io.to(chatroomId).emit('new_message', fullMessage);
+
+      const participants = await Participant.findAll({
+        where: { chatRoomId: chatroomId },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+          }
+        ]
+      });
+
+      const filteredParticipants = participants.filter(
+        (participant) => participant.user.id !== senderId
+      );
+
+      const readStatusPromises = filteredParticipants.map((participant) =>
+        MessageReadStatus.create({
+          messageId: message.id,
+          userId: participant.user.id,
+          read: false
+        })
+      );
+
+      await Promise.all(readStatusPromises);
+
+      for (const participant of filteredParticipants) {
+        const unreadCount = await MessageReadStatus.count({
+          where: {
+            userId: participant.user.id,
+            read: false
+          },
+          include: [
+            {
+              model: Message,
+              as: 'message',
+              attributes: [],
+              where: { chatroomId }
+            }
+          ]
+        });
+
+        io.to(`user_${participant.user.id}`).emit('unread_update', {
+          chatroomId,
+          unreadCount
+        });
+      }
+
+      const pushPromises = filteredParticipants.map(async (participant) => {
+        const subscriptions = await Subscription.findAll({
+          where: { userId: participant.user.id }
+        });
+
+        if (subscriptions.length > 0) {
+          const sendPromises = subscriptions.map(async (subscription) => {
+            try {
+              let subscriptionData = subscription.subscription;
+              if (typeof subscriptionData === 'string') {
+                subscriptionData = JSON.parse(subscriptionData);
+              }
+
+              const fcmToken = subscriptionData?.fcmToken;
+              if (fcmToken) {
+                await sendNotification(
+                  fcmToken,
+                  `New file from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                  fileUrl
+                );
+              }
+            } catch (error) {
+              console.error('Push notification error:', error);
+            }
+          });
+
+          await Promise.all(sendPromises);
+        }
+      });
+
+      await Promise.all(pushPromises);
+
+      return sendSuccess(res, fullMessage);
+    } catch (error) {
+      console.error('Error sending file message:', error);
+      return sendError(res, error, 'Failed to send file message.');
+    }
+  });
 };
 
 
