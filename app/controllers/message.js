@@ -319,6 +319,7 @@ exports.sendFileMessage = async (req, res, io) => {
 
       const fullMessage = await Message.findOne({
         where: { id: message.id },
+        attributes: ['id', 'content', 'senderId', 'chatroomId', 'fileUrl', 'createdAt'], // ✅ Add this line
         include: [
           {
             model: User,
@@ -326,7 +327,7 @@ exports.sendFileMessage = async (req, res, io) => {
             attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
           }
         ]
-      });
+      });      
 
       io.to(chatroomId).emit('new_message', fullMessage);
 
@@ -416,7 +417,6 @@ exports.sendFileMessage = async (req, res, io) => {
     }
   });
 };
-
 
 exports.reactToMessage = async (req, res, io) => {
     const token = getToken(req.headers);

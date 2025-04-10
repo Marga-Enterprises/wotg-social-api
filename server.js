@@ -154,14 +154,6 @@ io.on("connection", (socket) => {
     }
 });
 
-
-// Function to update and broadcast viewer count and list
-function updateViewerCount(io) {
-    const uniqueViewers = Object.keys(viewersMap); // Get unique logged-in viewers
-    io.emit("update_viewers", { count: uniqueViewers.length, viewers: uniqueViewers });
-}
-
-
 // ✅ Sync Database
 sequelize
     .sync({ force: false })
