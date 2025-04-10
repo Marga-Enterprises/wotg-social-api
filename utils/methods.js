@@ -211,34 +211,34 @@ exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
 
 exports.processImage = (inputFilePath) => {
   return new Promise((resolve, reject) => {
-      const ext = path.extname(inputFilePath).toLowerCase();
-      const isImage = [".jpg", ".jpeg", ".png"].includes(ext);
+    const ext = path.extname(inputFilePath).toLowerCase();
+    const isImage = [".jpg", ".jpeg", ".png", ".jfif"].includes(ext); // ✅ Fixed .jfif
 
-      if (!isImage) {
-          console.log("ℹ️ Not a supported image file, skipping conversion.");
-          return resolve(null); // No conversion, keep original
+    if (!isImage) {
+      console.log("ℹ️ Not a supported image file, skipping conversion.");
+      return resolve(null); // No conversion, keep original
+    }
+
+    const outputFilename = `profile-${Date.now()}.webp`;
+    const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
+    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -q:v 80 "${outputPath}"`;
+
+    exec(ffmpegCmd, (err, stdout, stderr) => {
+      if (err) {
+        console.error("❌ FFmpeg image conversion failed:", err);
+        return reject(err);
       }
 
-      const outputFilename = `profile-${Date.now()}.webp`;
-      const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
-      const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -q:v 80 "${outputPath}"`;
+      // ✅ Delete original image file
+      if (fs.existsSync(inputFilePath)) {
+        fs.unlink(inputFilePath, (err) => {
+          if (err) console.warn("⚠️ Failed to delete original image:", err);
+        });
+      }
 
-      exec(ffmpegCmd, (err, stdout, stderr) => {
-          if (err) {
-              console.error("❌ FFmpeg image conversion failed:", err);
-              return reject(err);
-          }
-
-          // Delete original image file
-          if (fs.existsSync(inputFilePath)) {
-              fs.unlink(inputFilePath, (err) => {
-                  if (err) console.warn("⚠️ Failed to delete original image:", err);
-              });
-          }
-
-          console.log("✅ Image converted to webp:", outputFilename);
-          resolve(outputFilename);
-      });
+      console.log("✅ Image converted to webp:", outputFilename);
+      resolve(outputFilename);
+    });
   });
 };
 

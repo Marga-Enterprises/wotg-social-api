@@ -17,7 +17,8 @@ const {
     sendSuccess,
     getToken,
     sendErrorUnauthorized,
-    decodeToken
+    decodeToken,
+    processImage,
 } = require("../../utils/methods");
 
 exports.getMessagesByChatroom = async (req, res, io) => {
@@ -279,7 +280,7 @@ exports.sendTextMessage = async (req, res, io) => {
 exports.sendFileMessage = async (req, res, io) => {
   upload.single('file')(req, res, async (err) => {
     if (err) {
-      console.error('File upload error:', err);
+      console.error('❌ File upload error:', err);
       return sendError(res, err, 'Failed to upload file.', 500);
     }
 
@@ -296,18 +297,17 @@ exports.sendFileMessage = async (req, res, io) => {
     let finalFileName = req.file.filename;
     const ext = path.extname(req.file.originalname).toLowerCase();
 
-    // Convert image if necessary
-    if ([".jpg", ".jpeg", ".png"].includes(ext)) {
-      try {
-        const converted = await processImage(req.file.path);
-        if (converted) finalFileName = converted;
-      } catch (conversionError) {
-        console.error('Image conversion failed:', conversionError);
-      }
+    // ✅ Image processing (convert to webp)
+    try {
+      const convertedFilename = await processImage(req.file.path); // same as update
+      if (convertedFilename) finalFileName = convertedFilename;
+    } catch (convErr) {
+      console.error('❌ Image conversion failed:', convErr);
+      return sendError(res, convErr, 'Image processing failed.');
     }
 
     const fileUrl = `/uploads/${finalFileName}`;
-    const content = fileUrl;
+    const content = fileUrl; // You can change this to a caption in the future
 
     try {
       const message = await Message.create({
@@ -319,7 +319,7 @@ exports.sendFileMessage = async (req, res, io) => {
 
       const fullMessage = await Message.findOne({
         where: { id: message.id },
-        attributes: ['id', 'content', 'senderId', 'chatroomId', 'fileUrl', 'createdAt'], // ✅ Add this line
+        attributes: ['id', 'content', 'senderId', 'chatroomId', 'fileUrl', 'createdAt'],
         include: [
           {
             model: User,
@@ -327,49 +327,31 @@ exports.sendFileMessage = async (req, res, io) => {
             attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
           }
         ]
-      });      
+      });
 
       io.to(chatroomId).emit('new_message', fullMessage);
 
+      // 👥 Read Status + Unread Count
       const participants = await Participant.findAll({
         where: { chatRoomId: chatroomId },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
-          }
-        ]
+        include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
       });
 
-      const filteredParticipants = participants.filter(
-        (participant) => participant.user.id !== senderId
-      );
+      const filteredParticipants = participants.filter(p => p.user.id !== senderId);
 
-      const readStatusPromises = filteredParticipants.map((participant) =>
+      const readStatusPromises = filteredParticipants.map(participant =>
         MessageReadStatus.create({
           messageId: message.id,
           userId: participant.user.id,
           read: false
         })
       );
-
       await Promise.all(readStatusPromises);
 
       for (const participant of filteredParticipants) {
         const unreadCount = await MessageReadStatus.count({
-          where: {
-            userId: participant.user.id,
-            read: false
-          },
-          include: [
-            {
-              model: Message,
-              as: 'message',
-              attributes: [],
-              where: { chatroomId }
-            }
-          ]
+          where: { userId: participant.user.id, read: false },
+          include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
         });
 
         io.to(`user_${participant.user.id}`).emit('unread_update', {
@@ -378,45 +360,42 @@ exports.sendFileMessage = async (req, res, io) => {
         });
       }
 
+      // 📲 FCM Notifications
       const pushPromises = filteredParticipants.map(async (participant) => {
-        const subscriptions = await Subscription.findAll({
-          where: { userId: participant.user.id }
+        const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
+
+        const sendPromises = subscriptions.map(async (subscription) => {
+          try {
+            let subData = typeof subscription.subscription === 'string'
+              ? JSON.parse(subscription.subscription)
+              : subscription.subscription;
+
+            const fcmToken = subData?.fcmToken;
+            if (fcmToken) {
+              await sendNotification(
+                fcmToken,
+                `New file from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+                '📎 Sent an image'
+              );
+            }
+          } catch (err) {
+            console.error('❌ Push notification error:', err);
+          }
         });
 
-        if (subscriptions.length > 0) {
-          const sendPromises = subscriptions.map(async (subscription) => {
-            try {
-              let subscriptionData = subscription.subscription;
-              if (typeof subscriptionData === 'string') {
-                subscriptionData = JSON.parse(subscriptionData);
-              }
-
-              const fcmToken = subscriptionData?.fcmToken;
-              if (fcmToken) {
-                await sendNotification(
-                  fcmToken,
-                  `New file from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                  fileUrl
-                );
-              }
-            } catch (error) {
-              console.error('Push notification error:', error);
-            }
-          });
-
-          await Promise.all(sendPromises);
-        }
+        return Promise.all(sendPromises);
       });
 
       await Promise.all(pushPromises);
 
       return sendSuccess(res, fullMessage);
     } catch (error) {
-      console.error('Error sending file message:', error);
+      console.error('❌ Error sending file message:', error);
       return sendError(res, error, 'Failed to send file message.');
     }
   });
 };
+
 
 exports.reactToMessage = async (req, res, io) => {
     const token = getToken(req.headers);
