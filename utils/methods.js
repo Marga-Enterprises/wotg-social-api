@@ -221,7 +221,7 @@ exports.processImage = (inputFilePath) => {
 
     const outputFilename = `profile-${Date.now()}.webp`;
     const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
-    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -q:v 80 "${outputPath}"`;
+    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -vf "scale=iw*0.4:ih*0.4" -c:v libwebp -qscale:v 75 -compression_level 6 -preset photo -loop 0 -an -vsync 0 "${outputPath}"`;
 
     exec(ffmpegCmd, (err, stdout, stderr) => {
       if (err) {
