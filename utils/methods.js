@@ -212,7 +212,7 @@ exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
 exports.processImage = (inputFilePath) => {
   return new Promise((resolve, reject) => {
     const ext = path.extname(inputFilePath).toLowerCase();
-    const isImage = [".jpg", ".jpeg", ".png", ".jfif"].includes(ext); // ✅ Fixed .jfif
+    const isImage = [".jpg", ".jpeg", ".png", ".jfif", ".gif"].includes(ext); // ✅ Fixed .jfif
 
     if (!isImage) {
       console.log("ℹ️ Not a supported image file, skipping conversion.");
