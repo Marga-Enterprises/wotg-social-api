@@ -159,135 +159,25 @@ exports.sendTextMessage = async (req, res, io) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
   const { content, senderId, chatroomId } = req.body;
-
   if (!content || !senderId || !chatroomId) {
     return sendError(res, '', 'Missing required fields.');
   }
 
   try {
-    // Save message
-    const message = await Message.create({
-      content,
-      senderId,
-      chatroomId
-    });
-
-    // Fetch with sender details
-    const fullMessage = await Message.findOne({
-      where: { id: message.id },
-      include: [
-        {
-          model: User,
-          as: 'sender',
-          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
-        }
-      ]
-    });
-
-    // Emit to chatroom
-    io.to(chatroomId).emit('new_message', fullMessage);
-
-    // Get participants
-    const participants = await Participant.findAll({
-      where: { chatRoomId: chatroomId },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
-        }
-      ]
-    });
-
-    const filteredParticipants = participants.filter(
-      (participant) => participant.user.id !== senderId
-    );
-
-    // Create read status
-    const readStatusPromises = filteredParticipants.map((participant) =>
-      MessageReadStatus.create({
-        messageId: message.id,
-        userId: participant.user.id,
-        read: false
-      })
-    );
-
-    await Promise.all(readStatusPromises);
-
-    // Emit unread updates
-    for (const participant of filteredParticipants) {
-      const unreadCount = await MessageReadStatus.count({
-        where: {
-          userId: participant.user.id,
-          read: false
-        },
-        include: [
-          {
-            model: Message,
-            as: 'message',
-            attributes: [],
-            where: { chatroomId }
-          }
-        ]
-      });
-
-      io.to(`user_${participant.user.id}`).emit('unread_update', {
-        chatroomId,
-        unreadCount
-      });
-    }
-
-    // Push notification to each participant
-    const pushPromises = filteredParticipants.map(async (participant) => {
-      const subscriptions = await Subscription.findAll({
-        where: { userId: participant.user.id }
-      });
-
-      if (subscriptions.length > 0) {
-        const sendPromises = subscriptions.map(async (subscription) => {
-          try {
-            let subscriptionData = subscription.subscription;
-            if (typeof subscriptionData === 'string') {
-              subscriptionData = JSON.parse(subscriptionData);
-            }
-
-            const fcmToken = subscriptionData?.fcmToken;
-            if (fcmToken) {
-              await sendNotification(
-                fcmToken,
-                `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                content
-              );
-            }
-          } catch (error) {
-            console.error('Push notification error:', error);
-          }
-        });
-
-        await Promise.all(sendPromises);
-      }
-    });
-
-    await Promise.all(pushPromises);
-
+    const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, io });
     return sendSuccess(res, fullMessage);
   } catch (error) {
-    console.error('Error sending text message:', error);
-    return sendError(res, error, 'Failed to send text message.');
+    console.error('❌ sendTextMessage error:', error);
+    return sendError(res, error, 'Failed to send message.');
   }
-};
+};  
 
 exports.sendFileMessage = async (req, res, io) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) {
-      console.error('❌ File upload error:', err);
-      return sendError(res, err, 'Failed to upload file.', 500);
-    }
+    if (err) return sendError(res, err, 'Failed to upload file.', 500);
 
     const token = getToken(req.headers);
-    if (!token) {
-      return sendErrorUnauthorized(res, '', 'Please login first.');
-    }
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
     const { senderId, chatroomId } = req.body;
     if (!req.file || !senderId || !chatroomId) {
@@ -295,107 +185,20 @@ exports.sendFileMessage = async (req, res, io) => {
     }
 
     let finalFileName = req.file.filename;
-    const ext = path.extname(req.file.originalname).toLowerCase();
 
-    // ✅ Image processing (convert to webp)
     try {
-      const convertedFilename = await processImage(req.file.path); // same as update
+      const convertedFilename = await processImage(req.file.path);
       if (convertedFilename) finalFileName = convertedFilename;
-    } catch (convErr) {
-      console.error('❌ Image conversion failed:', convErr);
-      return sendError(res, convErr, 'Image processing failed.');
-    }
 
-    const fileUrl = `/uploads/${finalFileName}`;
-    const content = fileUrl; // You can change this to a caption in the future
-
-    try {
-      const message = await Message.create({
-        content,
-        fileUrl,
-        senderId,
-        chatroomId
-      });
-
-      const fullMessage = await Message.findOne({
-        where: { id: message.id },
-        attributes: ['id', 'content', 'senderId', 'chatroomId', 'fileUrl', 'createdAt'],
-        include: [
-          {
-            model: User,
-            as: 'sender',
-            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
-          }
-        ]
-      });
-
-      io.to(chatroomId).emit('new_message', fullMessage);
-
-      // 👥 Read Status + Unread Count
-      const participants = await Participant.findAll({
-        where: { chatRoomId: chatroomId },
-        include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
-      });
-
-      const filteredParticipants = participants.filter(p => p.user.id !== senderId);
-
-      const readStatusPromises = filteredParticipants.map(participant =>
-        MessageReadStatus.create({
-          messageId: message.id,
-          userId: participant.user.id,
-          read: false
-        })
-      );
-      await Promise.all(readStatusPromises);
-
-      for (const participant of filteredParticipants) {
-        const unreadCount = await MessageReadStatus.count({
-          where: { userId: participant.user.id, read: false },
-          include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
-        });
-
-        io.to(`user_${participant.user.id}`).emit('unread_update', {
-          chatroomId,
-          unreadCount
-        });
-      }
-
-      // 📲 FCM Notifications
-      const pushPromises = filteredParticipants.map(async (participant) => {
-        const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
-
-        const sendPromises = subscriptions.map(async (subscription) => {
-          try {
-            let subData = typeof subscription.subscription === 'string'
-              ? JSON.parse(subscription.subscription)
-              : subscription.subscription;
-
-            const fcmToken = subData?.fcmToken;
-            if (fcmToken) {
-              await sendNotification(
-                fcmToken,
-                `New file from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-                '📎 Sent an image'
-              );
-            }
-          } catch (err) {
-            console.error('❌ Push notification error:', err);
-          }
-        });
-
-        return Promise.all(sendPromises);
-      });
-
-      await Promise.all(pushPromises);
+      const content = `/uploads/${finalFileName}`;
+      const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, io });
 
       return sendSuccess(res, fullMessage);
     } catch (error) {
-      console.error('❌ Error sending file message:', error);
       return sendError(res, error, 'Failed to send file message.');
     }
   });
 };
-
 
 exports.reactToMessage = async (req, res, io) => {
     const token = getToken(req.headers);
@@ -504,7 +307,81 @@ exports.reactToMessage = async (req, res, io) => {
     }
 };
 
+const createAndEmitMessage = async ({ content, senderId, chatroomId, io }) => {
+  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[Creating message:]]]]]]]]]]]]]]]]]]]]]]]]]]]', { content, senderId, chatroomId });
+  const message = await Message.create({ content, senderId, chatroomId });
 
+  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[CREATED MESSAGE:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', message);
+  const fullMessage = await Message.findOne({
+    where: { id: message.id },
+    attributes: ['id', 'content', 'senderId', 'chatroomId', 'createdAt'],
+    include: [{
+      model: User,
+      as: 'sender',
+      attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+    }]
+  });
+
+  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[FULL MESSAGE:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', fullMessage);
+
+  // Emit the new message to the room
+  io.to(chatroomId).emit('new_message', fullMessage);
+
+  // Find participants and mark as unread
+  const participants = await Participant.findAll({
+    where: { chatRoomId: chatroomId },
+    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
+  });
+
+  const filteredParticipants = participants.filter(p => p.user.id !== senderId);
+
+  await Promise.all(filteredParticipants.map(participant =>
+    MessageReadStatus.create({
+      messageId: message.id,
+      userId: participant.user.id,
+      read: false
+    })
+  ));
+
+  // Emit unread count
+  for (const participant of filteredParticipants) {
+    const unreadCount = await MessageReadStatus.count({
+      where: { userId: participant.user.id, read: false },
+      include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
+    });
+
+    io.to(`user_${participant.user.id}`).emit('unread_update', {
+      chatroomId,
+      unreadCount
+    });
+  }
+
+  // Send push notifications
+  await Promise.all(filteredParticipants.map(async (participant) => {
+    const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
+
+    await Promise.all(subscriptions.map(async (subscription) => {
+      try {
+        const subData = typeof subscription.subscription === 'string'
+          ? JSON.parse(subscription.subscription)
+          : subscription.subscription;
+
+        const fcmToken = subData?.fcmToken;
+        if (fcmToken) {
+          await sendNotification(
+            fcmToken,
+            `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+            content.includes('/uploads/') ? '📎 Sent an image' : content
+          );
+        }
+      } catch (err) {
+        console.error('❌ Push notification error:', err);
+      }
+    }));
+  }));
+
+  return fullMessage;
+};
 
 
 
