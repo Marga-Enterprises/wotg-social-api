@@ -6,7 +6,7 @@ const MessageReadStatus = require('../models/MessageReadStatus'); // Import Mess
 const MessageReact = require('../models/MessageReactions'); // Import Message model
 const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
-const upload = require('./upload');
+const upload = require('./upload'); // Import multer instance for file uploads
 
 const path = require('path');
 
@@ -158,13 +158,13 @@ exports.sendTextMessage = async (req, res, io) => {
   const token = getToken(req.headers);
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
-  const { content, senderId, chatroomId } = req.body;
+  const { content, senderId, chatroomId, type } = req.body;
   if (!content || !senderId || !chatroomId) {
     return sendError(res, '', 'Missing required fields.');
   }
 
   try {
-    const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, io });
+    const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, type, io });
     return sendSuccess(res, fullMessage);
   } catch (error) {
     console.error('❌ sendTextMessage error:', error);
@@ -172,14 +172,15 @@ exports.sendTextMessage = async (req, res, io) => {
   }
 };  
 
-exports.sendFileMessage = async (req, res, io) => {
+exports.sendFileMessage = (req, res, io) => {
   upload.single('file')(req, res, async (err) => {
     if (err) return sendError(res, err, 'Failed to upload file.', 500);
 
     const token = getToken(req.headers);
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
-    const { senderId, chatroomId } = req.body;
+    const { senderId, chatroomId, type } = req.body;
+
     if (!req.file || !senderId || !chatroomId) {
       return sendError(res, '', 'Missing file or required fields.');
     }
@@ -189,14 +190,25 @@ exports.sendFileMessage = async (req, res, io) => {
     try {
       const convertedFilename = await processImage(req.file.path);
       if (convertedFilename) finalFileName = convertedFilename;
-
-      const content = `/uploads/${finalFileName}`;
-      const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, io });
-
-      return sendSuccess(res, fullMessage);
     } catch (error) {
-      return sendError(res, error, 'Failed to send file message.');
+      return sendError(res, error, 'Image conversion failed.');
     }
+
+    // ✅ Construct content like a JSON request
+    const content = `/uploads/${finalFileName}`;
+
+    // ✅ Instead of calling sendTextMessage(req, res, io)
+    // 👉 Call the internal helper with same structure
+    const fullMessage = await createAndEmitMessage({
+      content,
+      senderId,
+      chatroomId,
+      type,
+      io
+    });
+
+    // ✅ Response same as JSON flow
+    return sendSuccess(res, fullMessage);
   });
 };
 
@@ -307,14 +319,12 @@ exports.reactToMessage = async (req, res, io) => {
     }
 };
 
-const createAndEmitMessage = async ({ content, senderId, chatroomId, io }) => {
-  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[Creating message:]]]]]]]]]]]]]]]]]]]]]]]]]]]', { content, senderId, chatroomId });
-  const message = await Message.create({ content, senderId, chatroomId });
+const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io }) => {
+  const message = await Message.create({ content, senderId, chatroomId, type });
 
-  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[CREATED MESSAGE:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', message);
   const fullMessage = await Message.findOne({
     where: { id: message.id },
-    attributes: ['id', 'content', 'senderId', 'chatroomId', 'createdAt'],
+    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'createdAt'],
     include: [{
       model: User,
       as: 'sender',
@@ -322,12 +332,8 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, io }) => {
     }]
   });
 
-  console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[FULL MESSAGE:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', fullMessage);
-
-  // Emit the new message to the room
   io.to(chatroomId).emit('new_message', fullMessage);
 
-  // Find participants and mark as unread
   const participants = await Participant.findAll({
     where: { chatRoomId: chatroomId },
     include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
@@ -371,7 +377,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, io }) => {
           await sendNotification(
             fcmToken,
             `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-            content.includes('/uploads/') ? '📎 Sent an image' : content
+            content.includes('/uploads/') ? 'Sent an image' : content
           );
         }
       } catch (err) {

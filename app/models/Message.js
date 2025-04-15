@@ -24,10 +24,11 @@ Message.init({
         type: DataTypes.INTEGER(11),
         allowNull: false, // No foreign key constraint
     },
-    fileUrl: {
-        type: DataTypes.STRING(255), // Or use DataTypes.TEXT if you expect long URLs
-        allowNull: true, // Optional, only for file messages
-    },
+    type: {
+        type: DataTypes.STRING(20), // or ENUM if you want strict values
+        allowNull: false,
+        defaultValue: 'text',
+    },    
 }, {
     sequelize,
     modelName: 'Message',
