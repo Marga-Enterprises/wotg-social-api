@@ -143,6 +143,11 @@ io.on("connection", (socket) => {
         socket.leave(room);
     });
 
+    socket.on('new_message', (msg) => {
+        console.log('[[[[[[[[[[[[[[[[[[[[[[📨 Received new_message from frontend]]]]]]]]]]]]]]]]]]]]]]', msg);
+        io.to(msg.chatroomId).emit('new_message', msg); // echo to others
+    });
+
     // Function to update and broadcast viewer count and list
     function updateViewerCount(io) {
         const viewersArray = Object.values(viewersMap).map((viewer) => ({
