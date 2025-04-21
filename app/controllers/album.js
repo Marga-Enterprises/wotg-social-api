@@ -1,0 +1,275 @@
+const Album = require("../models/Album");
+
+const { 
+    sendError,
+    sendSuccess,
+    getToken,
+    sendErrorUnauthorized,
+    decodeToken,
+    processImage,
+    removeFile
+} = require("../../utils/methods");
+
+const upload = require('./upload');
+
+const path = require("path");
+
+const { clearAlbumCache } = require("../../utils/clearBlogCache");
+
+const redisClient = require("../../config/redis");
+
+exports.list = async (req, res) => {
+    const token = getToken(req.headers);
+    
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+
+    try {
+        let { pageIndex, pageSize } = req.query;
+
+        // ✅ Validate pagination parameters
+        if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize) || pageIndex <= 0 || pageSize <= 0) {
+            return sendError(res, "", "Missing or invalid query parameters: pageIndex and pageSize must be > 0.");
+        }
+    
+        pageIndex = parseInt(pageIndex);
+        pageSize = parseInt(pageSize);
+
+        const offset = (pageIndex - 1) * pageSize;
+        const limit = pageSize;
+    
+        // ✅ Build dynamic Redis cache key
+        const cacheKey = `albums:page:${pageIndex}:${pageSize}`;
+    
+        const cached = await redisClient.get(cacheKey);
+    
+        if (cached) {
+            return sendSuccess(res, JSON.parse(cached), "From cache");
+        }
+    
+        const { count, rows } = await Album.findAndCountAll({
+            order: [["createdAt", "DESC"]],
+            offset,
+            limit,
+            raw: true
+        });
+
+        const totalPages = Math.ceil(count / pageSize);
+
+        const response = {
+            pageIndex,
+            pageSize,
+            totalPages,
+            totalRecords: count,
+            data: rows
+        };
+
+        // ✅ Cache the response for future requests
+        await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 3600); // Cache for 1 hour
+
+        return sendSuccess(res, response, "Albums retrieved successfully.");
+    } catch (error) {
+        console.error("Error in album controller:", error);
+        return sendError(res, "", "An error occurred while processing your request.");
+    }
+};
+
+exports.getAlbumById = async (req, res) => {
+    const token = getToken(req.headers);
+    
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+
+    try {
+        const { albumId } = req.params;
+
+        // ✅ Validate albumId
+        if (!albumId || isNaN(albumId)) {
+            return sendError(res, "", "Missing or invalid parameter: albumId must be a number.");
+        }
+
+        const cacheKey = `album_${albumId}`;
+        const cached = await redisClient.get(cacheKey);
+
+        if (cached) {
+            return sendSuccess(res, JSON.parse(cached), "From cache");
+        }
+
+        const album = await Album.findOne({
+            where: { id: albumId },
+            raw: true
+        });
+
+        if (!album) {
+            return sendError(res, "", "Album not found.");
+        }
+
+        // ✅ Cache the album data for future requests
+        await redisClient.set(cacheKey, JSON.stringify(album), 'EX', 3600); // Cache for 1 hour
+
+        return sendSuccess(res, album, "Album retrieved successfully.");
+    } catch (error) {
+        console.error("Error in getAlbumById function:", error);
+        return sendError(res, "", "An error occurred while fetching the album.");
+    }
+};
+
+exports.create = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+    if (!decodedToken) return sendErrorUnauthorized(res, "", "Invalid token.");
+
+    if (decodedToken.user.user_role !== "admin" && decodedToken.user.user_role !== "owner") {
+        return sendErrorUnauthorized(res, "", "You are not authorized to perform this action.");
+    };
+
+    try {
+        upload.single("file")(req, res, async () => {
+            const { title, artist_name, release_date, type, label, genre } = req.body;
+
+            // ✅ Validate required fields
+            if (!title || !artist_name || !type) {
+                return sendError(res, "", "Missing required fields: title, artist_name, and type are required.");
+            }
+    
+            // ✅ Validate type
+            const validTypes = ["album", "single", "compilation"];
+
+            if (!validTypes.includes(type)) {
+                return sendError(res, "", `Invalid type. Valid types are: ${validTypes.join(", ")}`);
+            }
+    
+            // ✅ Process cover image if provided
+            let cover_image = null;
+            if (req.file) {
+                cover_image = await processImage(req.file.path);
+            }
+    
+            const result = await Album.create({
+                title,
+                artist_name,
+                cover_image,
+                release_date,
+                type,
+                label,
+                genre
+            });
+    
+            // ✅ Clear cache for albums list after creating a new album
+            await clearAlbumCache();
+    
+            return sendSuccess(res, result);
+        });
+    } catch (error) {
+        console.error("Error in album controller:", error);
+        return sendError(res, "", "An error occurred while processing your request.");
+    }
+};
+
+exports.deleteAlbumById = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+    if (!decodedToken) return sendErrorUnauthorized(res, "", "Invalid token.");
+
+    if (decodedToken.user.user_role !== "admin" && decodedToken.user.user_role !== "owner") {
+        return sendErrorUnauthorized(res, "", "You are not authorized to perform this action.");
+    };
+
+    try {
+        const { albumId } = req.params;
+
+        if (!albumId || isNaN(albumId)) {
+            return sendError(res, "", "Missing or invalid parameter: albumId must be a number.");
+        };
+
+        const album = await Album.findOne({ where: { id: albumId } });
+
+        if (!album) {
+            return sendError(res, "", "Album not found.");
+        };
+
+        // DELETE THE IMAGE FILE
+        if (album.cover_image) {
+            const filePath = path.join(__dirname, "../../uploads", album.cover_image);
+            removeFile(filePath);
+        }
+
+        // DELETE THE ALBUM
+        await Album.destroy({ where: { id: albumId } });
+
+        // ✅ Clear cache for albums list after deleting an album
+        await clearAlbumCache(albumId);
+
+        return sendSuccess(res, {}, "Album deleted successfully.");
+    } catch (error) {
+        console.error("Error in deleteById function:", error);
+        return sendError(res, "", "An error occurred while deleting the album.");
+    }
+};
+
+exports.updateAlbumById = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+    
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+    if (!decodedToken) return sendErrorUnauthorized(res, "", "Invalid token.");
+    
+    if (decodedToken.user.user_role !== "admin" && decodedToken.user.user_role !== "owner") {
+        return sendErrorUnauthorized(res, "", "You are not authorized to perform this action.");
+    };
+
+    try {
+        upload.single("file")(req, res, async () => {
+            const { albumId } = req.params;
+            const { title, artist_name, release_date, type, label, genre } = req.body;
+    
+            if (!albumId || isNaN(albumId)) return sendError(res, "", "Missing or invalid parameter: albumId must be a number.");
+    
+            if (!title || !artist_name || !type) {
+                return sendError(res, "", "Missing required fields: title, artist_name, and type are required.");
+            }
+    
+            const album = await Album.findOne({ where: { id: albumId } });
+            if (!album) {
+                return sendError(res, "", "Album not found.");
+            }
+
+            // replace image if provided
+            let cover_image = album.cover_image;
+
+            if (req.file) {
+                const oldFilePath = path.join(__dirname, "../../uploads", album.cover_image);
+                removeFile(oldFilePath);
+
+                cover_image = await processImage(req.file.path);
+            }
+
+            // ✅ Validate type
+            const validTypes = ["album", "single", "compilation"];
+            if (!validTypes.includes(type)) {
+                return sendError(res, "", `Invalid type. Valid types are: ${validTypes.join(", ")}`);
+            }
+
+            // UPDATE THE ALBUM
+            await Album.update({
+                title,
+                artist_name,
+                cover_image,
+                release_date,
+                type,
+                label,
+                genre
+            }, { where: { id: albumId } });
+
+            await clearAlbumCache(albumId);
+
+            // response to the user
+            return sendSuccess(res, {}, "Album updated successfully.");
+        });
+    } catch (error) {
+        console.error("Error in updateAlbumById function:", error);
+        return sendError(res, "", "An error occurred while updating the album.");
+    }
+};

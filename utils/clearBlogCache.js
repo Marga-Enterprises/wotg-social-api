@@ -1,51 +1,100 @@
 const redisClient = require("../config/redis");
 
 exports.clearBlogCache = async (blogId) => {
-    try {
-        console.log(`🗑️ Clearing cache for blog ${blogId} and paginated blogs...`);
+  try {
+      console.log(`🗑️ Clearing cache for blog ${blogId} and paginated blogs...`);
 
-        // ✅ Delete the specific blog cache
-        await redisClient.del(`blog_${blogId}`);
+      // ✅ Delete the specific blog cache
+      await redisClient.del(`blog_${blogId}`);
 
-        // ✅ Delete all paginated blogs cache
-        const keys = await redisClient.keys("blogs_page_*");
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-            console.log("🗑️ Paginated blog cache cleared.");
-        }
+      // ✅ Delete all paginated blogs cache
+      const keys = await redisClient.keys("blogs_page_*");
+      if (keys.length > 0) {
+          await redisClient.del(keys);
+          console.log("🗑️ Paginated blog cache cleared.");
+      }
 
-        console.log(`✅ Cache cleared for blog ${blogId}`);
-    } catch (error) {
-        console.error("❌ Error clearing blog cache:", error);
-    }
+      console.log(`✅ Cache cleared for blog ${blogId}`);
+  } catch (error) {
+      console.error("❌ Error clearing blog cache:", error);
+  }
 };
 
 exports.clearJournalCache = async (journalId) => {
-    try {
-      console.log("🧹 Clearing journal cache...");
-  
-      const pattern = "journals:page:*";
-      const filteredPattern = "journals:page:*:user:*:viewer:*";
-      const journalKeys = journalId ? await redisClient.keys(`journal_*_${journalId}`) : [];
-  
-      const allPaginatedKeys = await redisClient.keys(pattern);
-      const allFilteredKeys = await redisClient.keys(filteredPattern);
-  
-      const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...journalKeys])];
-  
-      if (allKeys.length > 0) {
-        await redisClient.del(allKeys);
-        console.log(`🗑️ Cleared ${allKeys.length} journal cache entries.`);
-      } else {
-        console.log("ℹ️ No matching journal cache keys found.");
-      }
-  
-      console.log("✅ Journal cache cleared.");
-    } catch (error) {
-      console.error("❌ Error clearing journal cache:", error);
+  try {
+    console.log("🧹 Clearing journal cache...");
+
+    const pattern = "journals:page:*";
+    const filteredPattern = "journals:page:*:user:*:viewer:*";
+    const journalKeys = journalId ? await redisClient.keys(`journal_*_${journalId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...journalKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} journal cache entries.`);
+    } else {
+      console.log("ℹ️ No matching journal cache keys found.");
     }
-  };
+
+    console.log("✅ Journal cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing journal cache:", error);
+  }
+};
   
+exports.clearMusicCache = async (musicId) => {
+  try {
+    console.log("🧹 Clearing music cache...");
 
+    const pattern = "music:page:*";
+    const filteredPattern = "music:page*:album*:search*";
+    const musicKeys = musicId ? await redisClient.keys(`music*_${musicId}`) : [];
 
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...musicKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} music cache entries.`);
+    } else {
+      console.log("ℹ️ No matching music cache keys found.");
+    }
+
+    console.log("✅ Music cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing music cache:", error);
+  }
+}
+
+exports.clearAlbumCache = async (albumId) => {
+  try {
+    console.log("🧹 Clearing album cache...");
+
+    const pattern = "albums:page:*";
+    // const filteredPattern = "albums:page:*:user:*:viewer:*";
+    const albumKeys = albumId ? await redisClient.keys(`album*_${albumId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    // const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, /*...allFilteredKeys,*/ ...albumKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} album cache entries.`);
+    } else {
+      console.log("ℹ️ No matching album cache keys found.");
+    }
+
+    console.log("✅ Album cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing album cache:", error);
+  }
+};
 

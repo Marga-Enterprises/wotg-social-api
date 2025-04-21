@@ -28,6 +28,8 @@ const storage = multer.diskStorage({
                 ext = ".webm"; // Default videos to .webm if no extension is present
             } else if (file.mimetype.startsWith("image/")) {
                 ext = ".webp"; // Default images to .webp if no extension is present
+            } else if (file.mimetype.startsWith("audio/")) {
+                ext = ".ogg"; // Default audio to .ogg if no extension is present
             } else {
                 ext = ".bin"; // Default unknown files to .bin
             }

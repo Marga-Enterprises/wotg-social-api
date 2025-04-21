@@ -242,3 +242,55 @@ exports.processImage = (inputFilePath) => {
   });
 };
 
+exports.processAudio = (inputFilePath) => {
+  return new Promise((resolve, reject) => {
+    const ext = path.extname(inputFilePath).toLowerCase();
+    const isAudio = ['.mp3', '.wav', '.m4a'].includes(ext);
+
+    if (!isAudio) {
+      console.log('ℹ️ Not a supported audio file, skipping conversion.');
+      return resolve(null);
+    }
+
+    const outputFilename = `audio-${Date.now()}.ogg`;
+    const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
+
+    // 🧠 ffmpeg settings:
+    // -vn           : disable video stream
+    // -c:a libvorbis: use OGG Vorbis encoder
+    // -qscale:a 5   : quality (0=worst, 10=best), 4–5 = ~160kbps
+    // -ar 44100     : sample rate for web compatibility
+    // -ac 2         : stereo
+    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -vn -c:a libvorbis -qscale:a 5 -ar 44100 -ac 2 "${outputPath}"`;
+
+    exec(ffmpegCmd, (err, stdout, stderr) => {
+      if (err) {
+        console.error('❌ FFmpeg audio conversion failed:', err);
+        return reject(err);
+      }
+
+      // Delete original file (optional)
+      fs.unlink(inputFilePath, (unlinkErr) => {
+        if (unlinkErr) console.warn('⚠️ Failed to delete original audio:', unlinkErr);
+      });
+
+      console.log('✅ Audio converted to .ogg:', outputFilename);
+      resolve(outputFilename);
+    });
+  });
+};
+
+exports.removeFile = (filePath) => {
+  if (fs.existsSync(filePath)) {
+    fs.unlink(filePath, (err) => {
+      if (err) {
+        console.error("❌ Error deleting file:", err);
+      } else {
+        console.log("✅ File deleted successfully:", filePath);
+      }
+    });
+  } else {
+    console.warn("⚠️ File not found for deletion:", filePath);
+  }
+};
+

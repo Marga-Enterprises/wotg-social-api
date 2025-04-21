@@ -8,8 +8,6 @@ const User = require('../models/User'); // Import User model
 const webPush = require('web-push');
 const upload = require('./upload'); // Import multer instance for file uploads
 
-const path = require('path');
-
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
 const {

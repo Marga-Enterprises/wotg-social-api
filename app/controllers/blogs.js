@@ -1,7 +1,6 @@
 const Blogs = require('../models/Blogs'); 
 const { Op } = require("sequelize");
 const upload = require('./upload'); // ✅ Import the corrected upload handler
-const fs = require("fs");
 const path = require("path");
 const redisClient = require("../../config/redis");
 
@@ -11,7 +10,8 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
-    processVideo
+    processVideo,
+    removeFile
 } = require("../../utils/methods");
 
 const { clearBlogCache } = require("../../utils/clearBlogCache");
@@ -224,20 +224,12 @@ exports.deleteVideo = async (req, res) => {
         }
 
         // ✅ Get the absolute file path
+
+        
+
         const videoFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
 
-        // ✅ Delete the file from the server
-        if (fs.existsSync(videoFilePath)) {
-            try {
-                fs.unlinkSync(videoFilePath);
-                console.log(`Deleted video file: ${videoFilePath}`);
-            } catch (unlinkError) {
-                console.error("Error deleting video file:", unlinkError);
-                return sendError(res, "Failed to delete video file from server.");
-            }
-        } else {
-            console.warn("Video file not found on server:", videoFilePath);
-        }
+        removeFile(videoFilePath);
 
         // ✅ Update the database to remove the video reference
         blog.blog_video = null;

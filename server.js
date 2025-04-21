@@ -20,16 +20,15 @@ const worshipRoutes = require("./app/routes/worship"); // 🔥 Worship API route
 const blogRoutes = require("./app/routes/blogs");
 const bibleRoutes = require("./app/routes/bible");
 const journalRoutes = require("./app/routes/journal");
+const musicRoutes = require("./app/routes/music");
+const albumRoutes = require("./app/routes/album"); // Music API routes
 
+const Playlist = require('./app/models/Playlist');
+const Music = require('./app/models/Music');
 
 const app = express();
 const port = process.env.PORT || 4000;
 const server = http.createServer(app);
-
-const allowedOrigin =
-    process.env.NODE_ENV === "development"
-        ? "*" // React local
-        : "https://community.wotgonline.com"; // Production
 
 const io = new Server(server, {
     cors: {
@@ -68,14 +67,15 @@ app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/blogs", blogRoutes);
 app.use("/bibles", bibleRoutes);
 app.use("/journals", journalRoutes);
+app.use("/music", musicRoutes); // Music API routes
+app.use("/albums", albumRoutes); // Music API routes
 app.use("/uploads", express.static("uploads"));
-
 
 // **Live Viewer Count for Worship Page**
 let viewersMap = {}; // Store unique viewers by user email
 
 io.on("connection", (socket) => {
-    console.log(`🟢 User connected: ${socket.id}`);
+    // console.log(`🟢 User connected: ${socket.id}`);
 
     // **Live Viewer Count for Worship Page**
     socket.on("join_worship", (user) => {
@@ -158,6 +158,19 @@ io.on("connection", (socket) => {
         io.emit("update_viewers", { count: viewersArray.length, viewers: viewersArray });
     }
 });
+
+Playlist.belongsToMany(Music, {
+    through: 'playlist_music',
+    foreignKey: 'playlist_id',
+    otherKey: 'music_id',
+});
+
+Music.belongsToMany(Playlist, {
+    through: 'playlist_music',
+    foreignKey: 'music_id',
+    otherKey: 'playlist_id',
+});
+  
 
 // ✅ Sync Database
 sequelize
