@@ -1,6 +1,6 @@
 // app/models/Playlist.js
 const { Model, DataTypes } = require('sequelize');
-const Music= require('./Music');
+const User= require('./User');
 const sequelize = require('../../config/db');
 
 class Playlist extends Model {}
@@ -25,9 +25,14 @@ Playlist.init({
         allowNull: true,
     },
     created_by: {
-        type: DataTypes.STRING(255), // Replace with user_id if you implement a user model later
+        type: DataTypes.INTEGER,
         allowNull: false,
-    },
+        references: {
+            model: 'users',
+            key: 'id'
+        },
+        onDelete: 'CASCADE'
+    },      
     visibility: {
         type: DataTypes.ENUM('public', 'private'),
         allowNull: false,
@@ -45,5 +50,7 @@ Playlist.init({
     timestamps: true,
     underscored: true,
 });
+
+Playlist.belongsTo(User, { foreignKey: 'created_by' });
 
 module.exports = Playlist;
