@@ -125,11 +125,11 @@ exports.create = async (req, res) => {
 
     try {
         upload.single("file")(req, res, async () => {
-            const { title, artist_name, release_date, type, label, genre } = req.body;
+            const { title, release_date, type, label, genre } = req.body;
 
             // ✅ Validate required fields
-            if (!title || !artist_name || !type) {
-                return sendError(res, "", "Missing required fields: title, artist_name, and type are required.");
+            if (!title || !type) {
+                return sendError(res, "", "Missing required fields: title, and type are required.");
             }
     
             // ✅ Validate type
@@ -147,7 +147,7 @@ exports.create = async (req, res) => {
     
             const result = await Album.create({
                 title,
-                artist_name,
+                artist_name: 'WOTG Praise',
                 cover_image,
                 release_date,
                 type,
@@ -223,12 +223,12 @@ exports.updateAlbumById = async (req, res) => {
     try {
         upload.single("file")(req, res, async () => {
             const { albumId } = req.params;
-            const { title, artist_name, release_date, type, label, genre } = req.body;
+            const { title, release_date, type, label, genre } = req.body;
     
             if (!albumId || isNaN(albumId)) return sendError(res, "", "Missing or invalid parameter: albumId must be a number.");
     
-            if (!title || !artist_name || !type) {
-                return sendError(res, "", "Missing required fields: title, artist_name, and type are required.");
+            if (!title || !type) {
+                return sendError(res, "", "Missing required fields: title, and type are required.");
             }
     
             const album = await Album.findOne({ where: { id: albumId } });
@@ -255,7 +255,6 @@ exports.updateAlbumById = async (req, res) => {
             // UPDATE THE ALBUM
             await Album.update({
                 title,
-                artist_name,
                 cover_image,
                 release_date,
                 type,
