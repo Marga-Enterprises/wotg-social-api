@@ -125,7 +125,7 @@ exports.create = async (req, res) => {
 
     try {
         upload.single("file")(req, res, async () => {
-            const { title, release_date, type, label, genre } = req.body;
+            const { title, release_date, type, genre } = req.body;
 
             // ✅ Validate required fields
             if (!title || !type) {
@@ -151,7 +151,7 @@ exports.create = async (req, res) => {
                 cover_image,
                 release_date,
                 type,
-                label,
+                label: 'WOTG Praise',
                 genre
             });
     
@@ -223,7 +223,7 @@ exports.updateAlbumById = async (req, res) => {
     try {
         upload.single("file")(req, res, async () => {
             const { albumId } = req.params;
-            const { title, release_date, type, label, genre } = req.body;
+            const { title, release_date, type, genre } = req.body;
     
             if (!albumId || isNaN(albumId)) return sendError(res, "", "Missing or invalid parameter: albumId must be a number.");
     
@@ -258,7 +258,6 @@ exports.updateAlbumById = async (req, res) => {
                 cover_image,
                 release_date,
                 type,
-                label,
                 genre
             }, { where: { id: albumId } });
 
