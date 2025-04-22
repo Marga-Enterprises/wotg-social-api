@@ -285,3 +285,118 @@ exports.delete = async (req, res) => {
         return sendError(res, '', 'An error occurred while processing your request.');
     }
 };
+
+exports.addMusicToPlaylist = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Invalid token.');
+
+    const userId = decodedToken.user.id;
+
+    try {
+        const { playListId } = req.params;
+        const { musicIds } = req.body; // Expecting an array of music IDs
+
+        const playlist = await Playlist.findOne({ where: { id: playListId } });
+        if (!playlist) return sendError(res, '', 'Playlist not found.');
+
+        const parsedCreatedBy = parseInt(playlist.created_by);
+        const parsedUserId = parseInt(userId);
+
+        if (parsedCreatedBy !== parsedUserId) {
+            return sendErrorUnauthorized(res, '', 'You are not authorized to add music to this playlist.');
+        }
+
+        if (!Array.isArray(musicIds) || musicIds.length === 0) {
+            return sendError(res, '', 'Missing or invalid body parameter: musicIds must be a non-empty array.');
+        }
+
+        // ✅ Validate music IDs
+        const musics = await Music.findAll({
+            where: {
+                id: {
+                    [Op.in]: musicIds
+                }
+            }
+        });
+
+        if (musics.length === 0) {
+            return sendError(res, '', 'No valid music IDs provided.');
+        }
+
+        // ✅ Add music to the playlist
+        const playListMusicEntries = musics.map(music => ({
+            playlist_id: playListId,
+            music_id: music.id
+        }));        
+
+        await PlaylistMusic.bulkCreate(playListMusicEntries, {
+            ignoreDuplicates: true,
+            returning: false,
+            validate: true
+        });
+          
+        await clearPlaylistCache(playListId); // Clear cache for the updated playlist
+
+        return sendSuccess(res, {}, 'Music added to playlist successfully.');
+    } catch (error) {
+        console.error('Error in add music to playlist controller:', error);
+        return sendError(res, '', 'An error occurred while processing your request.');
+    }
+};
+
+exports.removeMusicFromPlaylist = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Invalid token.');
+    
+    const userId = decodedToken.user.id;
+
+    try {
+        const { playListId } = req.params;
+        const { musicIds } = req.body;
+
+        const playlist = await Playlist.findOne({ where: { id: playListId } });
+        if (!playlist) return sendError(res, '', 'Playlist not found.');
+
+        const parsedCreatedBy = parseInt(playlist.created_by);
+        const parsedUserId = parseInt(userId);
+
+        if (parsedCreatedBy !== parsedUserId) {
+            return sendErrorUnauthorized(res, '', 'You are not authorized to remove music from this playlist.');
+        }
+
+        const playListMusic = await PlaylistMusic.findAll({
+            where: {
+                playlist_id: playListId,
+                music_id: {
+                    [Op.in]: musicIds
+                }
+            }
+        });
+
+        if (playListMusic.length === 0) {
+            return sendError(res, '', 'No music found in the playlist with the provided IDs.');
+        };
+
+        const musicIdsToRemove = playListMusic.map(m => m.music_id);
+        await PlaylistMusic.destroy({
+            where: {
+                playlist_id: playListId,
+                music_id: {
+                    [Op.in]: musicIdsToRemove
+                }
+            }
+        });
+
+        await clearPlaylistCache(playListId); // Clear cache for the updated playlist
+        return sendSuccess(res, {}, 'Music removed from playlist successfully.');
+    } catch (error) {   
+        console.error('Error in remove music from playlist controller:', error);
+        return sendError(res, '', 'An error occurred while processing your request.');
+    }
+};
