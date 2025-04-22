@@ -38,11 +38,6 @@ Playlist.init({
         allowNull: false,
         defaultValue: 'public',
     },
-    total_duration: {
-        type: DataTypes.INTEGER, // In seconds (optional)
-        allowNull: false,
-        defaultValue: 0,
-    }
 }, {
     sequelize,
     modelName: 'Playlist',

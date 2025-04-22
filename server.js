@@ -22,6 +22,7 @@ const bibleRoutes = require("./app/routes/bible");
 const journalRoutes = require("./app/routes/journal");
 const musicRoutes = require("./app/routes/music");
 const albumRoutes = require("./app/routes/album"); // Music API routes
+const playListRoutes = require("./app/routes/playlist"); // Music API routes
 
 const Playlist = require('./app/models/Playlist');
 const Music = require('./app/models/Music');
@@ -69,6 +70,7 @@ app.use("/bibles", bibleRoutes);
 app.use("/journals", journalRoutes);
 app.use("/music", musicRoutes); // Music API routes
 app.use("/albums", albumRoutes); // Music API routes
+app.use("/playlists", playListRoutes); // Music API routes
 app.use("/uploads", express.static("uploads"));
 
 // **Live Viewer Count for Worship Page**

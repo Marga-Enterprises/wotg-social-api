@@ -1,7 +1,6 @@
 // app/models/Music.js
 const { Model, DataTypes } = require('sequelize');
 const Album = require('./Album'); // Assuming you have an Album model
-const Playlist = require('./Playlist');
 const sequelize = require('../../config/db');
 
 class Music extends Model {}

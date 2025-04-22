@@ -98,3 +98,29 @@ exports.clearAlbumCache = async (albumId) => {
   }
 };
 
+exports.clearPlaylistCache = async (playlistId) => {
+  try {
+    console.log("🧹 Clearing playlist cache...");
+
+    const pattern = "playlists:page:*";
+    const filteredPattern = "playlists:page*:user*:viewer*";
+    const playlistKeys = playlistId ? await redisClient.keys(`playlist*_${playlistId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...playlistKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} playlist cache entries.`);
+    } else {
+      console.log("ℹ️ No matching playlist cache keys found.");
+    }
+
+    console.log("✅ Playlist cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing playlist cache:", error);
+  }
+};
+
