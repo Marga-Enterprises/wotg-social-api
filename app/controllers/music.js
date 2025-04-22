@@ -1,5 +1,6 @@
 const Music = require("../models/Music");
 const Album = require("../models/Album");
+const PlaylistMusic = require("../models/PlaylistMusic");
 
 const {
   sendError,
@@ -243,6 +244,10 @@ exports.delete = async (req, res) => {
             const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
             removeFile(oldFilePath); // Remove the old file
         }
+
+        await PlaylistMusic.destroy({
+            where: { music_id: musicId }
+        }); 
 
         await Music.destroy({
             where: { id: musicId }

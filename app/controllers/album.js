@@ -1,4 +1,6 @@
 const Album = require("../models/Album");
+const Music = require("../models/Music");
+const PlaylistMusic = require("../models/PlaylistMusic");
 
 const { 
     sendError,
@@ -195,6 +197,17 @@ exports.deleteAlbumById = async (req, res) => {
             const filePath = path.join(__dirname, "../../uploads", album.cover_image);
             removeFile(filePath);
         }
+
+        await Music.findAll({ where: { album_id: albumId } })
+        .then(musics => {
+            musics.forEach(music => {
+                PlaylistMusic.destroy({
+                    where: { music_id: music.id }
+                });
+            });
+        });
+        
+        await Music.destroy({ where: { album_id: albumId } });
 
         // DELETE THE ALBUM
         await Album.destroy({ where: { id: albumId } });
