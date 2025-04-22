@@ -72,7 +72,7 @@ exports.list = async (req, res) => {
             pageSize,
             totalPages,
             totalItems: count,
-            items: rows
+            musics: rows
         };
 
         await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 3600); // Cache for 1 hourq

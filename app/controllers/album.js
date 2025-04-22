@@ -60,7 +60,7 @@ exports.list = async (req, res) => {
             pageSize,
             totalPages,
             totalRecords: count,
-            data: rows
+            albums: rows
         };
 
         // ✅ Cache the response for future requests
