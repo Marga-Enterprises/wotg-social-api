@@ -49,7 +49,7 @@ exports.list = async (req, res) => {
         // Filtering based on albumId and search
         const where = {
             [Op.and]: [
-                albumId ? { albumId: parseInt(albumId) } : {}, // Filter by albumId if provided
+                albumId ? { album_id: parseInt(albumId) } : {}, // Filter by albumId if provided
                 search ? {
                     [Op.or]: [
                         { title: { [Op.like]: `%${search}%` } },
