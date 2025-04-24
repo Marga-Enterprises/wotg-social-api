@@ -36,10 +36,6 @@ Album.init({
         type: DataTypes.STRING(255),
         allowNull: true,
     },
-    genre: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-    }
 }, {
     sequelize,
     modelName: 'Album',
