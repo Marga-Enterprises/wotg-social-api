@@ -245,23 +245,23 @@ exports.processImage = (inputFilePath) => {
 exports.processAudio = (inputFilePath) => {
   return new Promise((resolve, reject) => {
     const ext = path.extname(inputFilePath).toLowerCase();
-    const isAudio = ['.mp3', '.wav', '.m4a'].includes(ext);
+    const isAudio = ['.mp3', '.wav', '.m4a', '.ogg'].includes(ext);
 
     if (!isAudio) {
       console.log('ℹ️ Not a supported audio file, skipping conversion.');
       return resolve(null);
     }
 
-    const outputFilename = `audio-${Date.now()}.ogg`;
+    const outputFilename = `audio-${Date.now()}.mp3`;
     const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
 
-    // 🧠 ffmpeg settings:
-    // -vn           : disable video stream
-    // -c:a libvorbis: use OGG Vorbis encoder
-    // -qscale:a 5   : quality (0=worst, 10=best), 4–5 = ~160kbps
-    // -ar 44100     : sample rate for web compatibility
-    // -ac 2         : stereo
-    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -vn -c:a libvorbis -qscale:a 5 -ar 44100 -ac 2 "${outputPath}"`;
+    // ✅ ffmpeg settings:
+    // -vn             : disable video
+    // -ar 44100       : sample rate (standard for web audio)
+    // -ac 2           : stereo
+    // -b:a 160k       : bitrate for good balance of quality + size
+    // -codec:a libmp3lame : use MP3 encoder
+    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -vn -ar 44100 -ac 2 -b:a 160k -codec:a libmp3lame "${outputPath}"`;
 
     exec(ffmpegCmd, (err, stdout, stderr) => {
       if (err) {
@@ -269,12 +269,12 @@ exports.processAudio = (inputFilePath) => {
         return reject(err);
       }
 
-      // Delete original file (optional)
+      // 🧹 Optional: Delete the original file after conversion
       fs.unlink(inputFilePath, (unlinkErr) => {
         if (unlinkErr) console.warn('⚠️ Failed to delete original audio:', unlinkErr);
       });
 
-      console.log('✅ Audio converted to .ogg:', outputFilename);
+      console.log('✅ Audio converted to .mp3:', outputFilename);
       resolve(outputFilename);
     });
   });
