@@ -15,7 +15,7 @@ const upload = require('./upload');
 const path = require("path");
 
 const { clearMusicCache } = require("../../utils/clearBlogCache");
-const { Op } = require("sequelize");
+const { Sequelize, Op } = require("sequelize");
 
 const redisClient = require("../../config/redis");
 
@@ -63,6 +63,17 @@ exports.list = async (req, res) => {
             where,
             order: [["createdAt", "DESC"]],
             offset,
+            attributes: {
+                include: [
+                    [Sequelize.col('Album.cover_image'),  'cover_image']
+                ]
+            },
+            include: [ 
+                { 
+                    model: Album,
+                    attributes: []
+                }
+            ],
             limit,
             raw: true
         });
@@ -104,6 +115,17 @@ exports.getMusicById = async (req, res) => {
 
         const music = await Music.findOne({
             where: { id: musicId },
+            attributes: {
+                include: [
+                    [Sequelize.col('Album.cover_image'), 'cover_image']
+                ]
+            },
+            include: [
+                {
+                    model: Album,
+                    attributes: []
+                }
+            ],
             raw: true
         });
 
