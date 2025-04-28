@@ -8,15 +8,12 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
-    processImage,
     processImageToSpace,
-    removeFile,
     removeFileFromSpaces
 } = require("../../utils/methods");
 
 const { uploadFileToSpaces } = require('./spaceUploader');
 
-const upload = require('./upload');
 const uploadMemory = require('./uploadMemory');
 
 const path = require("path");
@@ -134,6 +131,9 @@ exports.create = async (req, res) => {
         uploadMemory.single("file")(req, res, async () => {
             const { title, release_date, type } = req.body;
 
+            let cover_image = null;
+            let processed_image = null;
+
             // ✅ Validate required fields
             if (!title || !type) {
                 return sendError(res, "", "Missing required fields: title, and type are required.");
@@ -197,8 +197,7 @@ exports.deleteAlbumById = async (req, res) => {
 
         // DELETE THE IMAGE FILE
         if (album.cover_image) {
-            const filePath = path.join(__dirname, "../../uploads", album.cover_image);
-            removeFile(filePath);
+            removeFileFromSpaces('images', album.cover_image)
         }
 
         await Music.findAll({ where: { album_id: albumId } })
@@ -237,7 +236,7 @@ exports.updateAlbumById = async (req, res) => {
     };
 
     try {
-        upload.single("file")(req, res, async () => {
+        uploadMemory.single("file")(req, res, async () => {
             const { albumId } = req.params;
             const { title, release_date, type } = req.body;
     
@@ -248,18 +247,19 @@ exports.updateAlbumById = async (req, res) => {
             }
     
             const album = await Album.findOne({ where: { id: albumId } });
+
+            let cover_image = album.cover_image;
+            let processed_image = null;
+
             if (!album) {
                 return sendError(res, "", "Album not found.");
             }
 
-            // replace image if provided
-            let cover_image = album.cover_image;
 
             if (req.file) {
-                const oldFilePath = path.join(__dirname, "../../uploads", album.cover_image);
-                removeFile(oldFilePath);
-
-                cover_image = await processImage(req.file.path);
+                removeFileFromSpaces('images', album.cover_image)
+                cover_image = await processImageToSpace(req.file);
+                processed_image = await uploadFileToSpaces(cover_image);
             }
 
             // ✅ Validate type
@@ -271,7 +271,7 @@ exports.updateAlbumById = async (req, res) => {
             // UPDATE THE ALBUM
             await Album.update({
                 title,
-                cover_image,
+                cover_image: processed_image,
                 release_date,
                 type,
             }, { where: { id: albumId } });

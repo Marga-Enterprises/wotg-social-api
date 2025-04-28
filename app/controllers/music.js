@@ -221,7 +221,7 @@ exports.update = async (req, res) => {
 
             if (req.file) {
                 // const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
-                removeFileFromSpaces(music.audio_url); // Remove the old file
+                removeFileFromSpaces('audios', music.audio_url); // Remove the old file
                 audio_url = await uploadFileToSpaces(req.file); // Process the new file
             };
 
@@ -270,7 +270,7 @@ exports.delete = async (req, res) => {
 
         if (music.audio_url) {
             // const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
-            removeFileFromSpaces(music.audio_url); // Remove the old file
+            removeFileFromSpaces('audios', music.audio_url); // Remove the old file
         }
 
         await PlaylistMusic.destroy({

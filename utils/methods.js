@@ -322,11 +322,11 @@ exports.removeFile = (filePath) => {
   }
 };
 
-exports.removeFileFromSpaces = async (key) => {
+exports.removeFileFromSpaces = async (folder, key) => {
   try {
     const params = {
       Bucket: process.env.DO_SPACES_BUCKET, // e.g., 'wotg'
-      Key: `audios/${key}`, // 👈 add 'audios/' folder if your files are stored there
+      Key: `${folder}/${key}`, // 👈 add 'audios/' folder if your files are stored there
     };
 
     await s3.deleteObject(params).promise();
