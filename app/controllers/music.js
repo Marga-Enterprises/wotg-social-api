@@ -10,14 +10,9 @@ const {
   removeFileFromSpaces
 } = require("../../utils/methods");
 
-const upload = require('./upload');
 const uploadMemory = require('./uploadMemory');
 
-const { uploadFileToSpaces } = require('./spaceUploader')
-
-const path = require("path");
-
-const uploadFile = process.env.NODE_ENV === 'development' ? upload : uploadMemory;
+const { uploadFileToSpaces } = require('./spaceUploader');
 
 const { clearMusicCache } = require("../../utils/clearBlogCache");
 const { Sequelize, Op } = require("sequelize");

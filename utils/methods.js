@@ -11,12 +11,12 @@ const { exec } = require("child_process");
 
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
-// const streamifier = require('streamifier');
-// const { PassThrough } = require('stream');
+const streamifier = require('streamifier');
+const { PassThrough } = require('stream');
 
 const { clearBlogCache } = require('./clearBlogCache');
 
-// ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const spacesEndpoint = new AWS.Endpoint(process.env.DO_SPACES_ENDPOINT);
 
@@ -195,6 +195,46 @@ exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
           if (fs.existsSync(inputFilePath)) fs.unlinkSync(inputFilePath);
       })
       .run();
+};
+
+exports.processImageToSpace = (file) => {
+  return new Promise((resolve, reject) => {
+    const inputStream = streamifier.createReadStream(file.buffer);
+    const outputChunks = [];
+    const outputStream = new PassThrough();
+
+    const command = ffmpeg(inputStream)
+      // ❌ REMOVE .inputFormat() entirely for images!
+      .outputFormat('webp') // ✅ Always convert to webp
+      .videoFilters('scale=iw*0.4:ih*0.4') // ✅ Resize to 40% of original
+      .outputOptions([
+        '-qscale:v 75',
+        '-compression_level 6',
+        '-preset photo',
+        '-loop 0',
+        '-an',
+        '-vsync 0'
+      ])
+      .on('error', (err) => {
+        console.error('❌ FFmpeg image conversion failed:', err);
+        reject(err);
+      })
+      .on('end', () => {
+        const outputBuffer = Buffer.concat(outputChunks);
+        console.log('✅ Image compressed and converted to webp (in-memory).');
+        resolve({
+          buffer: outputBuffer,
+          mimetype: 'image/webp',
+          originalname: `profile.webp`,
+        });
+      });
+
+    command.pipe(outputStream, { end: true });
+
+    outputStream.on('data', (chunk) => {
+      outputChunks.push(chunk);
+    });
+  });
 };
 
 exports.processImage = (inputFilePath) => {

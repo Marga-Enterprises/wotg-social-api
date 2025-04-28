@@ -9,10 +9,15 @@ const {
     sendErrorUnauthorized,
     decodeToken,
     processImage,
-    removeFile
+    processImageToSpace,
+    removeFile,
+    removeFileFromSpaces
 } = require("../../utils/methods");
 
+const { uploadFileToSpaces } = require('./spaceUploader');
+
 const upload = require('./upload');
+const uploadMemory = require('./uploadMemory');
 
 const path = require("path");
 
@@ -126,7 +131,7 @@ exports.create = async (req, res) => {
     };
 
     try {
-        upload.single("file")(req, res, async () => {
+        uploadMemory.single("file")(req, res, async () => {
             const { title, release_date, type } = req.body;
 
             // ✅ Validate required fields
@@ -140,17 +145,16 @@ exports.create = async (req, res) => {
             if (!validTypes.includes(type)) {
                 return sendError(res, "", `Invalid type. Valid types are: ${validTypes.join(", ")}`);
             }
-    
-            // ✅ Process cover image if provided
-            let cover_image = null;
+
             if (req.file) {
-                cover_image = await processImage(req.file.path);
+                cover_image = await processImageToSpace(req.file);
+                processed_image = await uploadFileToSpaces(cover_image);
             }
     
             const result = await Album.create({
                 title,
                 artist_name: 'WOTG Praise',
-                cover_image,
+                cover_image: processed_image,
                 release_date,
                 type,
                 label: 'WOTG Praise',
