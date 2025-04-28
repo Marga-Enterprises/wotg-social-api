@@ -6,10 +6,25 @@ const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
 const fs = require("fs");
+const AWS = require("aws-sdk");
 const { exec } = require("child_process");
-const ffmpeg = require("fluent-ffmpeg");
+
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+// const streamifier = require('streamifier');
+// const { PassThrough } = require('stream');
 
 const { clearBlogCache } = require('./clearBlogCache');
+
+// ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+
+const spacesEndpoint = new AWS.Endpoint(process.env.DO_SPACES_ENDPOINT);
+
+const s3 = new AWS.S3({
+  endpoint: spacesEndpoint,
+  accessKeyId: process.env.DO_SPACES_KEY,
+  secretAccessKey: process.env.DO_SPACES_SECRET,
+});
 
 const randomAuthor = () => {
   const l = authors[Math.floor(Math.random() * authors.length)];
@@ -70,29 +85,6 @@ exports.generateRefreshToken = (user) => {
 };
 
 exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = '') => {
-  // console.log('COLLECTION', collection);
-
-  /*
-  console.log("[(x_-) SEND ERROR collection] ", collection);
-  console.log("[(x_-) SEND ERROR code] ", code);
-  console.log("[(x_-) SEND ERROR data] ", data);
-  console.log("[(x_-) SEND ERROR msg] ", msg);
-
-  
-
-  // Check if MongoDB unique constraint violation (code 11000) occurred
-  if (data && data.code === 11000) {
-    const duplicateFieldMatch = data.errmsg.match(/index: (.+?)_1 dup key/);
-
-    if (duplicateFieldMatch && duplicateFieldMatch[1]) {
-      errorMessage = `${collection} with this ${duplicateFieldMatch[1]} already exists`;
-      collection = duplicateFieldMatch[1]; // Set the collection name dynamically
-    } else {
-      errorMessage = "Existing field already exists";
-    }
-  }
-  */
-
   return v.status(errNo).json({
     author: randomAuthor(),
     msg,
@@ -113,9 +105,6 @@ exports.formatPriceX = (price, key = '') => {
 
   return key === '' ? `₱${formattedPrice}` : `${key}₱ ${formattedPrice}`;
 };
-
-
-
 
 exports.sendErrorUnauthorized = (v, data, msg = '', errNo = 401, code = 101) => {
   return v.status(errNo).json({
@@ -138,7 +127,6 @@ exports.sendSuccess = (v, data, msg = '', sNum = 200, code = 0) => {
     code
   });
 };
-
 
 exports.getToken = (headers) => {
   if (headers && headers.authorization) {
@@ -242,43 +230,43 @@ exports.processImage = (inputFilePath) => {
   });
 };
 
-exports.processAudio = (inputFilePath) => {
+/*
+exports.processAudio = (file) => {
   return new Promise((resolve, reject) => {
-    const ext = path.extname(inputFilePath).toLowerCase();
-    const isAudio = ['.mp3', '.wav', '.m4a', '.ogg'].includes(ext);
+    const inputStream = streamifier.createReadStream(file.buffer);
+    const outputChunks = [];
+    const outputStream = new PassThrough();
 
-    if (!isAudio) {
-      console.log('ℹ️ Not a supported audio file, skipping conversion.');
-      return resolve(null);
-    }
-
-    const outputFilename = `audio-${Date.now()}.mp3`;
-    const outputPath = path.join(path.dirname(inputFilePath), outputFilename);
-
-    // ✅ ffmpeg settings:
-    // -vn             : disable video
-    // -ar 44100       : sample rate (standard for web audio)
-    // -ac 2           : stereo
-    // -b:a 160k       : bitrate for good balance of quality + size
-    // -codec:a libmp3lame : use MP3 encoder
-    const ffmpegCmd = `ffmpeg -i "${inputFilePath}" -vn -ar 44100 -ac 2 -b:a 160k -codec:a libmp3lame "${outputPath}"`;
-
-    exec(ffmpegCmd, (err, stdout, stderr) => {
-      if (err) {
-        console.error('❌ FFmpeg audio conversion failed:', err);
-        return reject(err);
-      }
-
-      // 🧹 Optional: Delete the original file after conversion
-      fs.unlink(inputFilePath, (unlinkErr) => {
-        if (unlinkErr) console.warn('⚠️ Failed to delete original audio:', unlinkErr);
+    const command = ffmpeg(inputStream)
+      .inputFormat(file.mimetype.split('/')[1])
+      .audioCodec('libmp3lame')
+      .audioBitrate('160k')
+      .audioChannels(2)
+      .audioFrequency(44100)
+      .format('mp3')
+      .on('error', (err) => {
+        console.error('❌ FFmpeg error:', err);
+        reject(err);
+      })
+      .on('end', () => {
+        const outputBuffer = Buffer.concat(outputChunks);
+        console.log('✅ Audio compressed fully (in-memory).');
+        resolve({
+          buffer: outputBuffer,
+          mimetype: 'audio/mpeg',
+          originalname: `compressed-${Date.now()}.mp3`,
+        });
       });
 
-      console.log('✅ Audio converted to .mp3:', outputFilename);
-      resolve(outputFilename);
+    // Pipe AFTER starting
+    command.pipe(outputStream, { end: true });
+
+    outputStream.on('data', (chunk) => {
+      outputChunks.push(chunk);
     });
   });
 };
+*/
 
 exports.removeFile = (filePath) => {
   if (fs.existsSync(filePath)) {
@@ -294,3 +282,16 @@ exports.removeFile = (filePath) => {
   }
 };
 
+exports.removeFileFromSpaces = async (key) => {
+  try {
+    const params = {
+      Bucket: process.env.DO_SPACES_BUCKET, // e.g., 'wotg'
+      Key: `audios/${key}`, // 👈 add 'audios/' folder if your files are stored there
+    };
+
+    await s3.deleteObject(params).promise();
+    console.log('✅ File deleted from Spaces:', params.Key);
+  } catch (err) {
+    console.error('❌ Error deleting file from Spaces:', err);
+  }
+};

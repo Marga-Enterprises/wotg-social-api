@@ -7,12 +7,17 @@ const {
   sendSuccess,
   getToken,
   sendErrorUnauthorized,
-  processAudio,
-  removeFile
+  removeFileFromSpaces
 } = require("../../utils/methods");
 
 const upload = require('./upload');
+const uploadMemory = require('./uploadMemory');
+
+const { uploadFileToSpaces } = require('./spaceUploader')
+
 const path = require("path");
+
+const uploadFile = process.env.NODE_ENV === 'development' ? upload : uploadMemory;
 
 const { clearMusicCache } = require("../../utils/clearBlogCache");
 const { Sequelize, Op } = require("sequelize");
@@ -63,11 +68,15 @@ exports.list = async (req, res) => {
             where,
             order: [["createdAt", "DESC"]],
             offset,
-            attributes: {
-                include: [
-                    [Sequelize.col('Album.cover_image'),  'cover_image']
-                ]
-            },
+            attributes: [
+                'id',
+                'audio_url',
+                'title',
+                'artist_name',
+                'duration',
+                'album_id',
+                [Sequelize.col('Album.cover_image'), 'cover_image']
+            ],
             include: [ 
                 { 
                     model: Album,
@@ -115,11 +124,14 @@ exports.getMusicById = async (req, res) => {
 
         const music = await Music.findOne({
             where: { id: musicId },
-            attributes: {
-                include: [
-                    [Sequelize.col('Album.cover_image'), 'cover_image']
-                ]
-            },
+            attributes: [
+                'id',
+                'audio_url',
+                'title',
+                'artist_name',
+                'album_id',
+                [Sequelize.col('Album.cover_image'), 'cover_image']
+            ],
             include: [
                 {
                     model: Album,
@@ -148,7 +160,7 @@ exports.create = async (req, res) => {
     if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
 
     try {
-        upload.single("file")(req, res, async (err) => {
+        uploadMemory.single("file")(req, res, async (err) => {
             const { title, album_id, duration, track_number, is_explicit, genre } = req.body;
 
             if (!req.file) {
@@ -165,15 +177,14 @@ exports.create = async (req, res) => {
                 return sendError(res, "", "Album not found.");
             };
 
-            let audio_url = null;
-
-            audio_url = await processAudio(req.file.path) 
+            // const processedFile  = await processAudio(req.file); 
+            const uploadedUrl = await uploadFileToSpaces(req.file);
 
             const music = await Music.create({
                 title,
                 album_id,
                 artist_name: "WOTG Praise", 
-                audio_url,
+                audio_url: uploadedUrl,
                 duration,
                 track_number,
                 is_explicit,
@@ -198,7 +209,7 @@ exports.update = async (req, res) => {
     
     try {
 
-        upload.single("file")(req, res, async (err) => {
+        uploadMemory.single("file")(req, res, async (err) => {
             const { musicId } = req.params;
             const { title, album_id, duration, track_number, is_explicit, genre } = req.body;
 
@@ -214,9 +225,9 @@ exports.update = async (req, res) => {
             let audio_url = null;
 
             if (req.file) {
-                const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
-                removeFile(oldFilePath); // Remove the old file
-                audio_url = await processAudio(req.file.path); // Process the new file
+                // const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
+                removeFileFromSpaces(music.audio_url); // Remove the old file
+                audio_url = await uploadFileToSpaces(req.file); // Process the new file
             };
 
             await Music.update({
@@ -263,8 +274,8 @@ exports.delete = async (req, res) => {
         }
 
         if (music.audio_url) {
-            const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
-            removeFile(oldFilePath); // Remove the old file
+            // const oldFilePath = path.join(__dirname, "../../uploads", music.audio_url);
+            removeFileFromSpaces(music.audio_url); // Remove the old file
         }
 
         await PlaylistMusic.destroy({
