@@ -364,7 +364,6 @@ exports.updateChatroom = async (req, res, io) => {
 
         const chatroomId = req.params.id; // Get chatroom ID from params
         const { name } = req.body;
-        let chatroom_photo = req.file ? req.file.filename : null;
 
         if (!chatroomId) {
             return sendError(res, null, "Chatroom ID is required.");
