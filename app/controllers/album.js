@@ -16,8 +16,6 @@ const { uploadFileToSpaces } = require('./spaceUploader');
 
 const uploadMemory = require('./uploadMemory');
 
-const path = require("path");
-
 const { clearAlbumCache } = require("../../utils/clearBlogCache");
 
 const redisClient = require("../../config/redis");

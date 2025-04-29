@@ -5,8 +5,9 @@ const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
 const MessageReact = require('../models/MessageReactions'); // Import Message model
 const User = require('../models/User'); // Import User model
-const webPush = require('web-push');
-const upload = require('./upload'); // Import multer instance for file uploads
+
+const { uploadFileToSpaces } = require('./spaceUploader');
+const uploadMemory = require('./uploadMemory');
 
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
@@ -16,7 +17,7 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
-    processImage,
+    processImageToSpace
 } = require("../../utils/methods");
 
 exports.getMessagesByChatroom = async (req, res, io) => {
@@ -171,7 +172,7 @@ exports.sendTextMessage = async (req, res, io) => {
 };  
 
 exports.sendFileMessage = (req, res, io) => {
-  upload.single('file')(req, res, async (err) => {
+  uploadMemory.single('file')(req, res, async (err) => {
     if (err) return sendError(res, err, 'Failed to upload file.', 500);
 
     const token = getToken(req.headers);
@@ -186,14 +187,16 @@ exports.sendFileMessage = (req, res, io) => {
     let finalFileName = req.file.filename;
 
     try {
-      const convertedFilename = await processImage(req.file.path);
-      if (convertedFilename) finalFileName = convertedFilename;
+      const convertedFilename = await processImageToSpace(req.file);
+      const processedImage = await uploadFileToSpaces(convertedFilename);
+      if (processedImage) finalFileName = processedImage;
+      
     } catch (error) {
       return sendError(res, error, 'Image conversion failed.');
     }
 
     // ✅ Construct content like a JSON request
-    const content = `/uploads/${finalFileName}`;
+    const content = finalFileName;
 
     // ✅ Instead of calling sendTextMessage(req, res, io)
     // 👉 Call the internal helper with same structure
@@ -375,7 +378,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io })
           await sendNotification(
             fcmToken,
             `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
-            content.includes('/uploads/') ? 'Sent an image' : content
+            fullMessage.type === 'file' ? 'Sent an image' : content
           );
         }
       } catch (err) {

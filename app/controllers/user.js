@@ -1,8 +1,8 @@
 const User = require('../models/User'); // Import User model
 const { Op } = require('sequelize'); // Import Sequelize Operators
-const upload= require('./upload');
-const fs = require("fs");
-const path = require("path");
+
+const { uploadFileToSpaces } = require('./spaceUploader');
+const uploadMemory = require('./uploadMemory');
 
 const {
     sendError,
@@ -10,7 +10,8 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
-    processImage
+    processImageToSpace,
+    removeFileFromSpaces
 } = require("../../utils/methods");
 
 exports.list = async (req, res) => {
@@ -99,7 +100,7 @@ exports.get = async (req, res) => {
 };
 
 exports.update = async (req, res) => {
-    upload.single("file")(req, res, async (err) => {
+    uploadMemory.single("file")(req, res, async (err) => {
         if (err) {
             console.error("❌ Error uploading file:", err);
             return sendError(res, err, "Failed to upload file.");
@@ -127,13 +128,7 @@ exports.update = async (req, res) => {
 
             // ✅ Delete old profile picture if new one uploaded
             if (req.file && user.user_profile_picture) {
-                const oldImagePath = path.join(__dirname, "../uploads", user.user_profile_picture);
-                if (fs.existsSync(oldImagePath)) {
-                    fs.unlink(oldImagePath, (err) => {
-                        if (err) console.error("❌ Error deleting old profile picture:", err);
-                        else console.log("✅ Old profile picture deleted:", user.user_profile_picture);
-                    });
-                }
+                await removeFileFromSpaces('images', user.user_profile_picture)
             }
 
             // ✅ Update fields
@@ -144,10 +139,10 @@ exports.update = async (req, res) => {
 
             if (req.file) {
                 try {
-                    const convertedFilename = await processImage(req.file.path);
-
+                    const convertedFilename = await processImageToSpace(req.file);
+                    const processedImage = await uploadFileToSpaces(convertedFilename);
                     // If image was converted to webp, use it; else fallback to original filename
-                    user.user_profile_picture = convertedFilename || req.file.filename;
+                    user.user_profile_picture = processedImage;
                 } catch (convErr) {
                     console.error("❌ Image processing failed:", convErr);
                     return sendError(res, convErr, "Image processing failed.");

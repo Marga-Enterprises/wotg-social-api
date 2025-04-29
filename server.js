@@ -1,5 +1,4 @@
 const path = require("path");
-const webPush = require("web-push");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 const express = require("express");
@@ -40,18 +39,6 @@ const io = new Server(server, {
     },
     transports: ["websocket", "polling"],
 });
-
-// Web Push Configuration
-const vapidKeys = {
-    publicKey: process.env.VAPID_PUBLIC_KEY,
-    privateKey: process.env.VAPID_PRIVATE_KEY,
-};
-
-webPush.setVapidDetails(
-    "mailto:your-email@example.com",
-    vapidKeys.publicKey,
-    vapidKeys.privateKey
-);
 
 // Middleware
 app.use(express.json());
