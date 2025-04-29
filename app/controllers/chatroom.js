@@ -4,16 +4,18 @@ const Participant = require('../models/Participant');
 const User = require('../models/User'); 
 const Message = require('../models/Message'); 
 const MessageReadStatus = require('../models/MessageReadStatus'); 
-const upload = require('./upload');
-const fs = require("fs");
-const path = require("path");
+
+const uploadMemory = require('./uploadMemory');
+const { uploadFileToSpaces } = require('./spaceUploader');
 
 const {
     sendError,
     sendSuccess,
     getToken,
     sendErrorUnauthorized,
-    decodeToken
+    decodeToken,
+    processImageToSpace,
+    removeFileFromSpaces,
 } = require("../../utils/methods");
 
 const sequelize = require('../../config/db');
@@ -350,7 +352,7 @@ exports.addParticipants = async (req, res, io) => {
 };
 
 exports.updateChatroom = async (req, res, io) => {
-    upload.single("file")(req, res, async (err) => {
+    uploadMemory.single("file")(req, res, async (err) => {
         if (err) {
             return sendError(res, null, "File upload failed.");
         }
@@ -360,7 +362,6 @@ exports.updateChatroom = async (req, res, io) => {
             return sendErrorUnauthorized(res, "", "Please login first.");
         }
 
-        const userDecoded = decodeToken(token);
         const chatroomId = req.params.id; // Get chatroom ID from params
         const { name } = req.body;
         let chatroom_photo = req.file ? req.file.filename : null;
@@ -376,10 +377,18 @@ exports.updateChatroom = async (req, res, io) => {
                 return sendError(res, null, "Chatroom not found.");
             }
 
+
+            if (chatroom.chatroom_photo) {
+                await removeFileFromSpaces('images', chatroom.chatroom_photo);
+            }
+
+            const convertedImage = await processImageToSpace(req.file);
+            const processedImage = await uploadFileToSpaces(convertedImage);
+
             // Update fields dynamically
             const updateFields = {};
             if (name) updateFields.name = name;
-            if (chatroom_photo) updateFields.chatroom_photo = chatroom_photo;
+            if (processedImage) updateFields.chatroom_photo = processedImage;
 
             // Perform update
             await chatroom.update(updateFields);

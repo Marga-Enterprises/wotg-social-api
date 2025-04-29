@@ -3,10 +3,19 @@ const PlaylistMusic = require('../models/PlaylistMusic');
 const Music = require('../models/Music');
 
 const { Op } = require('sequelize');
-const { sendError, sendSuccess, getToken, sendErrorUnauthorized, decodeToken, processImage, removeFile } = require('../../utils/methods');
-const upload = require('./upload');
+const { 
+    sendError, 
+    sendSuccess, 
+    getToken, 
+    sendErrorUnauthorized, 
+    decodeToken, 
+    processImageToSpace,
+    removeFileFromSpaces 
+} = require('../../utils/methods');
 
-const path = require('path');
+const { uploadFileToSpaces } = require('./spaceUploader');
+const uploadMemory = require('./uploadMemory');
+
 const { clearPlaylistCache } = require('../../utils/clearBlogCache');
 const redisClient = require('../../config/redis');
 
@@ -149,7 +158,7 @@ exports.create = async (req, res) => {
     }
 
     try {
-        upload.single("file")(req, res, async (err) => {
+        uploadMemory.single("file")(req, res, async (err) => {
             const { name, description } = req.body;
     
             // ✅ Validate required fields
@@ -163,8 +172,8 @@ exports.create = async (req, res) => {
                 return sendError(res, '', 'Missing required field: image. Please upload an image file.');
             }
     
-            // ✅ Process the image file
-            const processedImage = await processImage(imageFile.path, 300, 300); // Resize to 300x300
+            const convertedImage = await processImageToSpace(imageFile);
+            const processedImage = await uploadFileToSpaces(convertedImage);
     
             // ✅ Create the playlist
             const newPlaylist = await Playlist.create({
@@ -196,7 +205,7 @@ exports.update = async (req, res) => {
     const userId = decodedToken.user.id;
 
     try {
-        upload.single("file")(req, res, async (err) => {
+        uploadMemory.single("file")(req, res, async (err) => {
             const { playListId } = req.params;
 
             if (!playListId) {
@@ -218,11 +227,12 @@ exports.update = async (req, res) => {
 
             if (imageFile) {
                 // ✅ Process the new image file
-                const processedImage = await processImage(imageFile.path, 300, 300); // Resize to 300x300
+                const convertedImage = await processImageToSpace(imageFile);
+                const processedImage = await uploadFileToSpaces(convertedImage);
 
                 // ✅ Remove the old image file if it exists
                 if (playlist.cover_image) {
-                    await removeFile(path.join(__dirname, '../../uploads', playlist.cover_image));
+                    await removeFileFromSpaces('images', playlist.cover_image);
                 }
 
                 playlist.cover_image = processedImage;
@@ -272,7 +282,7 @@ exports.delete = async (req, res) => {
 
         if (playlist.cover_image) {
             // ✅ Remove the old image file if it exists
-            await removeFile(path.join(__dirname, '../../uploads', playlist.cover_image));
+            await removeFileFromSpaces('images', playlist.cover_image);
         }
 
         await playlist.destroy({ where: { id: playListId } });

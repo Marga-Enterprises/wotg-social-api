@@ -1,7 +1,7 @@
 const Blogs = require('../models/Blogs'); 
 const { Op } = require("sequelize");
-const upload = require('./upload'); // ✅ Import the corrected upload handler
-const path = require("path");
+const { uploadFileToSpaces } = require('./spaceUploader');
+const uploadMemory = require('./uploadMemory');
 const redisClient = require("../../config/redis");
 
 const {
@@ -10,8 +10,8 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
-    processVideo,
-    removeFile
+    processVideoToSpace,
+    removeFileFromSpaces
 } = require("../../utils/methods");
 
 const { clearBlogCache } = require("../../utils/clearBlogCache");
@@ -169,22 +169,33 @@ exports.uploadVideo = async (req, res) => {
         const blog = await Blogs.findByPk(id);
         if (!blog) return sendError(res, {}, "Blog not found.");
 
-        upload.single("file")(req, res, async (err) => {
+        uploadMemory.single("file")(req, res, async (err) => {
             if (err || !req.file) {
                 return sendError(res, {}, "Video upload failed or no file.");
             }
 
-            const inputFilePath = req.file.path;
+            const file = req.file;
 
-            // ✅ Respond to user immediately
-            sendSuccess(res, {
+            let convertedVideo = null;
+            let processedVideo = null;
+
+            if (file) {
+                convertedVideo = await processVideoToSpace(file);
+                processedVideo = await uploadFileToSpaces(convertedVideo);
+            }
+
+            await Blogs.update({
+                blog_video: processedVideo,
+                blog_uploaded_by: userId
+            }, { where: { id } });
+
+            await clearBlogCache(id);
+
+            return sendSuccess(res, {
                 message: "Video received. Processing...",
                 blog_id: blog.id,
                 uploaded_by: userId,
             });
-
-            // 🔄 Continue processing in background
-            processVideo(inputFilePath, blog, userId, id);
         });
     } catch (error) {
         sendError(res, error, "Internal Server Error");
@@ -223,13 +234,7 @@ exports.deleteVideo = async (req, res) => {
             return sendError(res, "No video associated with this blog.");
         }
 
-        // ✅ Get the absolute file path
-
-        
-
-        const videoFilePath = path.join(__dirname, "../../uploads", blog.blog_video);
-
-        removeFile(videoFilePath);
+        removeFileFromSpaces('videos', blog.blog_video);
 
         // ✅ Update the database to remove the video reference
         blog.blog_video = null;

@@ -5,16 +5,12 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const moment = require ('moment')
 const authors = ['@baje'];
 const jwt = require('jsonwebtoken');
-const fs = require("fs");
 const AWS = require("aws-sdk");
-const { exec } = require("child_process");
 
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const streamifier = require('streamifier');
 const { PassThrough } = require('stream');
-
-const { clearBlogCache } = require('./clearBlogCache');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -96,7 +92,6 @@ exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = ''
   });
 };
 
-
 exports.formatPriceX = (price, key = '') => {
   const formattedPrice = parseFloat(price)
     .toFixed(2)
@@ -153,6 +148,100 @@ exports.decodeToken = (token) => {
   }
 };
 
+exports.processVideoToSpace = (file) => {
+  return new Promise((resolve, reject) => {
+    const inputStream = streamifier.createReadStream(file.buffer);
+    const outputChunks = [];
+    const outputStream = new PassThrough();
+
+    const command = ffmpeg(inputStream)
+      .outputFormat('webm')
+      .videoFilters('scale=iw*0.4:ih*0.4')
+      .outputOptions([
+        '-qscale:v 75',
+        '-compression_level 6',
+        '-preset photo',
+        '-loop 0',
+        '-an',
+        '-vsync 0'
+      ])
+      .on('error', (err) => {
+        console.error('FFmpeg video conversion failed:', err);
+        reject(err);
+      })
+      .on('end', () => {
+        const outputBuffer = Buffer.concat(outputChunks);
+        console.log('Video compressed and converted to webm (in-memory).');
+        resolve({
+          buffer: outputBuffer,
+          mimetype: 'video/webm',
+          originalname: 'video.webm'
+        });
+      });
+
+      command.pipe(outputStream, { end: true });
+
+      outputStream.on('data', (chunk) => {
+        outputChunks.push(chunk);
+      });
+  })
+};
+
+exports.processImageToSpace = (file) => {
+  return new Promise((resolve, reject) => {
+    const inputStream = streamifier.createReadStream(file.buffer);
+    const outputChunks = [];
+    const outputStream = new PassThrough();
+
+    const command = ffmpeg(inputStream)
+      // ❌ REMOVE .inputFormat() entirely for images!
+      .outputFormat('webp') // ✅ Always convert to webp
+      .videoFilters('scale=iw*0.4:ih*0.4') // ✅ Resize to 40% of original
+      .outputOptions([
+        '-qscale:v 75',
+        '-compression_level 6',
+        '-preset photo',
+        '-loop 0',
+        '-an',
+        '-vsync 0'
+      ])
+      .on('error', (err) => {
+        console.error('❌ FFmpeg image conversion failed:', err);
+        reject(err);
+      })
+      .on('end', () => {
+        const outputBuffer = Buffer.concat(outputChunks);
+        console.log('✅ Image compressed and converted to webp (in-memory).');
+        resolve({
+          buffer: outputBuffer,
+          mimetype: 'image/webp',
+          originalname: `profile.webp`,
+        });
+      });
+
+    command.pipe(outputStream, { end: true });
+
+    outputStream.on('data', (chunk) => {
+      outputChunks.push(chunk);
+    });
+  });
+};
+
+exports.removeFileFromSpaces = async (folder, key) => {
+  try {
+    const params = {
+      Bucket: process.env.DO_SPACES_BUCKET, // e.g., 'wotg'
+      Key: `${folder}/${key}`, // 👈 add 'audios/' folder if your files are stored there
+    };
+
+    await s3.deleteObject(params).promise();
+    console.log('✅ File deleted from Spaces:', params.Key);
+  } catch (err) {
+    console.error('❌ Error deleting file from Spaces:', err);
+  }
+};
+
+/*
 exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
   const webmFileName = `converted-${Date.now()}.webm`;
   const webmFilePath = path.join(__dirname, "../uploads", webmFileName);
@@ -197,45 +286,7 @@ exports.processVideo = async (inputFilePath, blog, userId, blogId) => {
       .run();
 };
 
-exports.processImageToSpace = (file) => {
-  return new Promise((resolve, reject) => {
-    const inputStream = streamifier.createReadStream(file.buffer);
-    const outputChunks = [];
-    const outputStream = new PassThrough();
 
-    const command = ffmpeg(inputStream)
-      // ❌ REMOVE .inputFormat() entirely for images!
-      .outputFormat('webp') // ✅ Always convert to webp
-      .videoFilters('scale=iw*0.4:ih*0.4') // ✅ Resize to 40% of original
-      .outputOptions([
-        '-qscale:v 75',
-        '-compression_level 6',
-        '-preset photo',
-        '-loop 0',
-        '-an',
-        '-vsync 0'
-      ])
-      .on('error', (err) => {
-        console.error('❌ FFmpeg image conversion failed:', err);
-        reject(err);
-      })
-      .on('end', () => {
-        const outputBuffer = Buffer.concat(outputChunks);
-        console.log('✅ Image compressed and converted to webp (in-memory).');
-        resolve({
-          buffer: outputBuffer,
-          mimetype: 'image/webp',
-          originalname: `profile.webp`,
-        });
-      });
-
-    command.pipe(outputStream, { end: true });
-
-    outputStream.on('data', (chunk) => {
-      outputChunks.push(chunk);
-    });
-  });
-};
 
 exports.processImage = (inputFilePath) => {
   return new Promise((resolve, reject) => {
@@ -270,7 +321,7 @@ exports.processImage = (inputFilePath) => {
   });
 };
 
-/*
+
 exports.processAudio = (file) => {
   return new Promise((resolve, reject) => {
     const inputStream = streamifier.createReadStream(file.buffer);
@@ -306,7 +357,8 @@ exports.processAudio = (file) => {
     });
   });
 };
-*/
+
+
 
 exports.removeFile = (filePath) => {
   if (fs.existsSync(filePath)) {
@@ -321,17 +373,5 @@ exports.removeFile = (filePath) => {
     console.warn("⚠️ File not found for deletion:", filePath);
   }
 };
+*/
 
-exports.removeFileFromSpaces = async (folder, key) => {
-  try {
-    const params = {
-      Bucket: process.env.DO_SPACES_BUCKET, // e.g., 'wotg'
-      Key: `${folder}/${key}`, // 👈 add 'audios/' folder if your files are stored there
-    };
-
-    await s3.deleteObject(params).promise();
-    console.log('✅ File deleted from Spaces:', params.Key);
-  } catch (err) {
-    console.error('❌ Error deleting file from Spaces:', err);
-  }
-};
