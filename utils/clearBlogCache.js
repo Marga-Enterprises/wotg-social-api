@@ -51,7 +51,7 @@ exports.clearMusicCache = async (musicId) => {
     console.log("🧹 Clearing music cache...");
 
     const pattern = "music:page:*";
-    const filteredPattern = "music:page*:album*:search*";
+    const filteredPattern = "music:page*:album*:search*:order*";
     const musicKeys = musicId ? await redisClient.keys(`music*_${musicId}`) : [];
 
     const allPaginatedKeys = await redisClient.keys(pattern);

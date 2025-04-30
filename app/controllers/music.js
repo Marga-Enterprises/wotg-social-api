@@ -25,7 +25,7 @@ exports.list = async (req, res) => {
     if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
 
     try {
-        let { pageIndex, pageSize, albumId, search } = req.query;
+        let { pageIndex, pageSize, albumId, search, order } = req.query;
 
         // ✅ Validate pagination parameters
         if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize) || pageIndex <= 0 || pageSize <= 0) {
@@ -39,7 +39,7 @@ exports.list = async (req, res) => {
         const limit = pageSize;
 
         // ✅ Build dynamic Redis cache key
-        const cacheKey = `music:page:${pageIndex}:${pageSize}${albumId ? `:album:${albumId}` : ""}${search ? `:search:${search}` : ""}`;
+        const cacheKey = `music:page:${pageIndex}:${pageSize}${albumId ? `:album:${albumId}` : ""}${search ? `:search:${search}` : ""}${order ? `:search:${order}` : ""}`;
         const cached = await redisClient.get(cacheKey);
 
         if (cached) {
@@ -61,7 +61,7 @@ exports.list = async (req, res) => {
         
         const { count, rows } = await Music.findAndCountAll({
             where,
-            order: [["createdAt", "DESC"]],
+            order: [[order, "DESC"]],
             offset,
             attributes: [
                 'id',
@@ -69,8 +69,11 @@ exports.list = async (req, res) => {
                 'title',
                 'artist_name',
                 'duration',
+                'play_count',
+                'createdAt',
                 'album_id',
-                [Sequelize.col('Album.cover_image'), 'cover_image']
+                [Sequelize.col('Album.cover_image'), 'cover_image'],
+                [Sequelize.col('Album.title'), 'album_title']
             ],
             include: [ 
                 { 
@@ -124,6 +127,7 @@ exports.getMusicById = async (req, res) => {
                 'audio_url',
                 'title',
                 'artist_name',
+                'play_count',
                 'album_id',
                 [Sequelize.col('Album.cover_image'), 'cover_image']
             ],
@@ -140,8 +144,12 @@ exports.getMusicById = async (req, res) => {
             return sendError(res, "", "Music not found.");
         }
 
-        await redisClient.set(cacheKey, JSON.stringify(music), 'EX', 3600); // Cache for 1 hour
+        await Music.update({
+            play_count: music.play_count + 1,
+        }, { where: { id: musicId } })
 
+        await clearMusicCache(musicId);
+        
         return sendSuccess(res, music, "Music retrieved successfully.");
     } catch (error) {
         console.error("Error in getMusicById function:", error);

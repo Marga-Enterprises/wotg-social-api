@@ -1,8 +1,10 @@
 const Playlist = require('../models/Playlist');
 const PlaylistMusic = require('../models/PlaylistMusic');
+const Album = require('../models/Album');
 const Music = require('../models/Music');
+const User = require('../models/User');
 
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const { 
     sendError, 
     sendSuccess, 
@@ -56,6 +58,22 @@ exports.list = async (req, res) => {
         const { count, rows } = await Playlist.findAndCountAll({
             order: [['createdAt', 'DESC']],
             where,
+            attributes: [
+              'id',
+              'name',
+              'created_by',
+              'description',
+              'cover_image',
+              [Sequelize.col('User.user_fname'), 'creator_fname'],
+              [Sequelize.col('User.user_lname'), 'creator_lname'],
+            ],
+            include: [
+                {
+                    model: User,
+                    attributes: [],
+                    required: false,
+                }
+            ],
             offset,
             limit,
             raw: true
@@ -79,71 +97,79 @@ exports.list = async (req, res) => {
 };
 
 exports.getPlaylistById = async (req, res) => {
-    const token = getToken(req.headers);
-    const decodedToken = decodeToken(token);
+  const token = getToken(req.headers);
+  const decodedToken = decodeToken(token);
 
-    const userId = decodedToken ? decodedToken.user.id : null;
+  const userId = decodedToken ? decodedToken.user.id : null;
 
-    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+  if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
-    try {
-        const { playListId } = req.params;
+  try {
+    const { playListId } = req.params;
 
-        if (!playListId) {
-            return sendError(res, '', 'Missing or invalid query parameter: playListId.');
-        }
-
-        const cacheKey = `playlist_${playListId}`;
-
-        const cached = await redisClient.get(cacheKey);
-        if (cached) {
-            return sendSuccess(res, JSON.parse(cached), 'From cache');
-        }
-
-        const playlist = await Playlist.findOne({
-            where: { id: playListId },
-            raw: true
-        });
-
-        if (!playlist) {
-            return sendError(res, '', 'Playlist not found.');
-        }
-
-        const parsedCreatedBy = parseInt(playlist.created_by);
-        const parsedUserId = parseInt(userId);
-
-        if (parsedCreatedBy !== parsedUserId) {
-            return sendErrorUnauthorized(res, '', 'You are not authorized to view this playlist.');
-        }
-
-        const music = await Music.findAll({
-            include: {
-                model: Playlist,
-                where: { id: playListId },
-                through: { attributes: [] } // Exclude the join table attributes
-            }
-        })
-
-        const result = {
-            ...playlist,
-            musics: music.map(m => ({
-                id: m.id,
-                title: m.title,
-                artist: m.artist,
-                album: m.album,
-                genre: m.genre,
-                duration: m.duration,
-                releaseDate: m.releaseDate
-            }))
-        };
-
-        await redisClient.set(cacheKey, JSON.stringify(result), 'EX', 60 * 60); // Cache for 1 hour
-
-        return sendSuccess(res, result, 'Playlist retrieved successfully.');
-    } catch (error) {
-        console.error('Error in playlist controller:', error);
-        return sendError(res, '', 'An error occurred while processing your request.');
+    if (!playListId) {
+      return sendError(res, '', 'Missing or invalid query parameter: playListId.');
     }
+
+    const cacheKey = `playlist_${playListId}`;
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      return sendSuccess(res, JSON.parse(cached), 'From cache');
+    }
+
+    const playlist = await Playlist.findOne({
+      where: { id: playListId },
+      raw: true,
+    });
+
+    if (!playlist) {
+      return sendError(res, '', 'Playlist not found.');
+    }
+
+    const parsedCreatedBy = parseInt(playlist.created_by);
+    const parsedUserId = parseInt(userId);
+
+    if (parsedCreatedBy !== parsedUserId) {
+      return sendErrorUnauthorized(res, '', 'You are not authorized to view this playlist.');
+    }
+
+    const music = await Music.findAll({
+      include: [
+        {
+          model: Playlist,
+          where: { id: playListId },
+          through: { attributes: [] }
+        },
+        {
+          model: Album,
+          attributes: ['title', 'cover_image']
+        }
+      ]
+    });
+
+    const result = {
+      ...playlist,
+      musics: music.map((m) => ({
+        id: m.id,
+        title: m.title,
+        artist_name: m.artist_name,
+        duration: m.duration,
+        audio_url: m.audio_url,
+        play_count: m.play_count,
+        createdAt: m.createdAt,
+        album_id: m.album_id,
+        cover_image: m.Album?.cover_image || null,
+        album_title: m.Album?.title || 'Unknown'
+      }))
+    };
+
+    await redisClient.set(cacheKey, JSON.stringify(result), 'EX', 60 * 60); // 1 hour cache
+
+    return sendSuccess(res, result, 'Playlist retrieved successfully.');
+  } catch (error) {
+    console.error('Error in playlist controller:', error);
+    return sendError(res, '', 'An error occurred while processing your request.');
+  }
 };
 
 exports.create = async (req, res) => {
@@ -162,19 +188,21 @@ exports.create = async (req, res) => {
             const { name, description } = req.body;
     
             // ✅ Validate required fields
-            if (!name || !description) {
-                return sendError(res, '', 'Missing required fields: name and description.');
+            if (!name) {
+                return sendError(res, '', 'Missing required fields: name.');
             }
     
             // ✅ Validate image file
             const imageFile = req.file;
-            if (!imageFile) {
-                return sendError(res, '', 'Missing required field: image. Please upload an image file.');
+
+            let convertedImage = null;
+            let processedImage = null;
+
+            if (imageFile) {
+              convertedImage = await processImageToSpace(imageFile);
+              processedImage = await uploadFileToSpaces(convertedImage);
             }
-    
-            const convertedImage = await processImageToSpace(imageFile);
-            const processedImage = await uploadFileToSpaces(convertedImage);
-    
+            
             // ✅ Create the playlist
             const newPlaylist = await Playlist.create({
                 name,
