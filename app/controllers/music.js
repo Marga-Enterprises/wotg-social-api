@@ -78,7 +78,8 @@ exports.list = async (req, res) => {
             include: [ 
                 { 
                     model: Album,
-                    attributes: []
+                    attributes: [],
+                    required: false
                 }
             ],
             limit,
