@@ -66,7 +66,7 @@ exports.list = async (req, res) => {
             pageIndex,
             pageSize,
             totalPages,
-            totalCount: count,
+            totalRecords: count,
             playlists: rows
         };
 
