@@ -179,10 +179,6 @@ exports.create = async (req, res) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Invalid token.');
 
-    if (decodedToken.user.user_role !== 'admin' && decodedToken.user.user_role !== 'owner') {
-        return sendErrorUnauthorized(res, '', 'You are not authorized to perform this action.');
-    }
-
     try {
         uploadMemory.single("file")(req, res, async (err) => {
             const { name, description } = req.body;
