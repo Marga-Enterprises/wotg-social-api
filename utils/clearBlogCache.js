@@ -72,6 +72,29 @@ exports.clearMusicCache = async (musicId) => {
   }
 }
 
+exports.clearRecommendedCache = async (musicId) => {
+  try {
+    console.log("🧹 Clearing recommended cache...");
+
+    const pattern = "recommended:page:*";
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} recommended cache entries.`);
+    } else {
+      console.log("ℹ️ No matching music cache keys found.");
+    }
+
+    console.log("✅ Recommended cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing recommended cache:", error);
+  }
+}
+
 exports.clearAlbumCache = async (albumId) => {
   try {
     console.log("🧹 Clearing album cache...");

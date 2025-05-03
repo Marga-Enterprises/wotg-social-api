@@ -7,7 +7,9 @@ const {
   sendSuccess,
   getToken,
   sendErrorUnauthorized,
-  removeFileFromSpaces
+  removeFileFromSpaces,
+  clearRecommendedCache,
+  decodeToken,
 } = require("../../utils/methods");
 
 const uploadMemory = require('./uploadMemory');
@@ -38,15 +40,22 @@ exports.list = async (req, res) => {
         const offset = (pageIndex - 1) * pageSize;
         const limit = pageSize;
 
+        // Filtering based on albumId and search
+        let orderClause = [];
+
+        if (order === 'createdAt') {
+            orderClause = [['createdAt', "DESC"]];
+        } else if (order === 'play_count') {
+            orderClause = [['play_count', "DESC"]];
+        } 
         // ✅ Build dynamic Redis cache key
-        const cacheKey = `music:page:${pageIndex}:${pageSize}${albumId ? `:album:${albumId}` : ""}${search ? `:search:${search}` : ""}${order ? `:search:${order}` : ""}`;
+        const cacheKey = `music:page:${pageIndex}:${pageSize}${albumId ? `:album:${albumId}` : ""}${search ? `:search:${search}` : ""}${order ? `:order:${order}` : ""}`;
         const cached = await redisClient.get(cacheKey);
 
         if (cached) {
             return sendSuccess(res, JSON.parse(cached), "From cache");
         }
 
-        // Filtering based on albumId and search
         const where = {
             [Op.and]: [
                 albumId ? { album_id: parseInt(albumId) } : {}, // Filter by albumId if provided
@@ -57,11 +66,11 @@ exports.list = async (req, res) => {
                     ]
                 } : {}
             ]
-        };   
+        }; 
         
         const { count, rows } = await Music.findAndCountAll({
             where,
-            order: [[order, "DESC"]],
+            order: orderClause,
             offset,
             attributes: [
                 'id',
@@ -96,6 +105,90 @@ exports.list = async (req, res) => {
         };
 
         await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 3600); // Cache for 1 hourq
+
+        return sendSuccess(res, response);
+    } catch (error) {
+        console.error("Error in list function:", error);
+        return sendError(res, "", "An error occurred while fetching the musics.");
+    }
+}
+
+exports.recommended = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
+
+    try {
+        let { pageIndex, pageSize, search } = req.query;
+        const userId = decodedToken.user.id;
+
+        // ✅ Validate pagination parameters
+        if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize) || pageIndex <= 0 || pageSize <= 0) {
+            return sendError(res, "", "Missing or invalid query parameters: pageIndex and pageSize must be > 0.");
+        }
+
+        pageIndex = parseInt(pageIndex);
+        pageSize = parseInt(pageSize);
+
+        const offset = (pageIndex - 1) * pageSize;
+        const limit = pageSize;
+        const seed = Math.floor(Math.random() * 1000000);
+
+        const cacheKey = `recommended:page:${pageIndex}:${pageSize}:seed:${seed}:userId:${userId}`;
+        const cached = await redisClient.get(cacheKey);
+
+        if (cached) {
+            return sendSuccess(res, JSON.parse(cached), "From cache");
+        }
+
+        const where = {
+            [Op.and]: [
+                search ? {
+                    [Op.or]: [
+                        { title: { [Op.like]: `%${search}%` } },
+                        { artist_name: { [Op.like]: `%${search}%` } }
+                    ]
+                } : {}
+            ]
+        }; 
+        
+        const { count, rows } = await Music.findAndCountAll({
+            where,
+            order: Sequelize.literal('RAND()'),
+            offset,
+            attributes: [
+                'id',
+                'audio_url',
+                'title',
+                'artist_name',
+                'duration',
+                'play_count',
+                'album_id',
+                [Sequelize.col('Album.cover_image'), 'cover_image'],
+                [Sequelize.col('Album.title'), 'album_title']
+            ],
+            include: [ 
+                { 
+                    model: Album,
+                    attributes: [],
+                    required: false
+                }
+            ],
+            limit,
+            raw: true
+        });
+
+        const totalPages = Math.ceil(count / pageSize);
+        const response = {
+            pageIndex,
+            pageSize,
+            totalPages,
+            totalItems: count,
+            musics: rows
+        };
+
+        await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 30); // short TTL
 
         return sendSuccess(res, response);
     } catch (error) {
@@ -196,7 +289,10 @@ exports.create = async (req, res) => {
             });
     
             // Clear cache for the newly created music
-            await clearMusicCache();
+            await Promise.all([
+                clearMusicCache(),
+                clearRecommendedCache()
+            ]);
     
             return sendSuccess(res, music, "Music created successfully.");
         });
@@ -246,7 +342,10 @@ exports.update = async (req, res) => {
                 where: { id: musicId }
             });
 
-            await clearMusicCache(musicId); // Clear cache for the updated music
+            await Promise.all([
+                clearMusicCache(musicId),
+                clearRecommendedCache()
+            ]);
 
             return sendSuccess(res, "", "Music updated successfully.");
         });
@@ -288,7 +387,10 @@ exports.delete = async (req, res) => {
             where: { id: musicId }
         });
 
-        await clearMusicCache(musicId); // Clear cache for the deleted music
+        await Promise.all([
+            clearMusicCache(),
+            clearRecommendedCache()
+        ]);
 
         return sendSuccess(res, "", "Music deleted successfully.");
     } catch (error) {
