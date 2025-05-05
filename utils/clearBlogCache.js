@@ -147,3 +147,69 @@ exports.clearPlaylistCache = async (playlistId) => {
   }
 };
 
+exports.clearFollowersCache = async (userId) => {
+  try {
+    console.log("🧹 Clearing followers cache...");
+    
+    const pattern = `followers:page*:user${userId}`;
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+
+    if (allPaginatedKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} playlist cache entries.`);
+    } else {
+      console.log("ℹ️ No matching playlist cache keys found.");
+    }
+
+    console.log("✅ Playlist cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing followers cache:", error);
+  };
+};
+
+exports.clearFollowingCache = async (userId) => {
+  try {
+    console.log("🧹 Clearing following cache...");
+    
+    const pattern = `following:page*:user${userId}`;
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+
+    if (allPaginatedKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} playlist cache entries.`);
+    } else {
+      console.log("ℹ️ No matching playlist cache keys found.");
+    }
+
+    console.log("✅ Playlist cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing following cache:", error);
+  };
+}
+
+exports.clearPostsCache = async (postId) => {
+  try {
+    console.log("🧹 Clearing posts cache...");
+
+    const pattern = "posts:page:*"
+    const filteredPattern = "playlists:page*:user*";
+    const postKeys = postId ? await redisClient.keys(`post_${postId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...postKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} posts cache entries.`);
+    } else {
+      console.log("ℹ️ No matching post cache keys found.");
+    }
+
+  } catch (error) {
+    console.error("❌ Error clearing posts cache:", error);
+  };
+}

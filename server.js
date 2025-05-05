@@ -22,9 +22,13 @@ const journalRoutes = require("./app/routes/journal");
 const musicRoutes = require("./app/routes/music");
 const albumRoutes = require("./app/routes/album"); // Music API routes
 const playListRoutes = require("./app/routes/playlist"); // Music API routes
+const followRoutes = require('./app/routes/follow');
+const postRoutes = require('./app/routes/post');
 
 const Playlist = require('./app/models/Playlist');
 const Music = require('./app/models/Music');
+const User = require('./app/models/User');
+const Follow = require('./app/models/Follow');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -58,7 +62,10 @@ app.use("/journals", journalRoutes);
 app.use("/music", musicRoutes); // Music API routes
 app.use("/albums", albumRoutes); // Music API routes
 app.use("/playlists", playListRoutes); // Music API routes
+app.use("/follow", followRoutes); // Music API routes
+app.use("/posts", postRoutes);
 app.use("/uploads", express.static("uploads"));
+
 
 // **Live Viewer Count for Worship Page**
 let viewersMap = {}; // Store unique viewers by user email
@@ -159,7 +166,20 @@ Music.belongsToMany(Playlist, {
     foreignKey: 'music_id',
     otherKey: 'playlist_id',
 });
-  
+
+User.belongsToMany(User, {
+    through: Follow,
+    as: 'Following',
+    foreignKey: 'follower_id',
+    otherKey: 'following_id',
+});
+
+User.belongsToMany(User, {
+    through: Follow,
+    as: 'Followers',
+    foreignKey: 'following_id',
+    otherKey: 'follower_id',
+});
 
 // ✅ Sync Database
 sequelize
