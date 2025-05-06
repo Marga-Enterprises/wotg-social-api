@@ -237,15 +237,26 @@ exports.updateById = async (req, res) => {
             const { content, visibility, filesToDelete } = req.body;
 
             const files = req.files;
+            const filesToDeleteArray = filesToDelete ? filesToDelete.split(',') : [];
 
             const post = await Post.findOne({
                 where: { id: postId }
             });
 
-            if (post.id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
+            if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
 
-            if (filesToDelete.length > 0) {
-                for (const fileToDelete of filesToDelete) {
+
+
+            if (filesToDeleteArray.length > 0) {
+                for (const fileToDelete of filesToDeleteArray) {
+                    if (fileToDelete.includes('.webp')) {
+                        await removeFileFromSpaces('images', fileToDelete);
+                    } else if (fileToDelete.includes('.webm')) {
+                        await removeFileFromSpaces('videos', fileToDelete);
+                    } else {
+                        await removeFileFromSpaces('audios', fileToDelete);
+                    }
+
                     await PostMedia.destroy({
                         where: { url: fileToDelete }
                     });
@@ -280,8 +291,8 @@ exports.updateById = async (req, res) => {
             
                         // Create a new PostMedia entry for each processed file
                         await PostMedia.create({
-                            post_id: newPost.id,
-                            file_url: processedFile,
+                            post_id: post.id,
+                            url: processedFile,
                             type: filetype,
                         });
             
@@ -306,3 +317,57 @@ exports.updateById = async (req, res) => {
         return sendError(res, '', 'Unable to create post');
     }
 }
+
+exports.deleteById = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    const userId = decodedToken.user.id;
+
+    try {
+        const { postId } = req.params;
+
+        const post = await Post.findOne({
+            where: { id: postId },
+            include: [
+                {
+                    model: PostMedia,
+                    as: 'media',
+                    attributes: ['url']
+                }
+            ]
+        });
+
+        if (!post) return sendError(res, '', 'Post not found.');
+        if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to delete this post.');
+
+        // Delete media files from storage
+        for (const media of post.media) {
+            if (media.url.includes('.webp')) {
+                await removeFileFromSpaces('images', media.url);
+            } else if (media.url.includes('.webm')) {
+                await removeFileFromSpaces('videos', media.url);
+            } else {
+                await removeFileFromSpaces('audios', media.url);
+            }
+        }
+
+        // Delete media records from DB
+        await PostMedia.destroy({ where: { post_id: postId } });
+
+        // Delete the post
+        await Post.destroy({ where: { id: postId } });
+
+        // Clear related cache
+        await clearPostsCache(postId);
+
+        return sendSuccess(res, {}, 'Post deleted successfully.');
+    } catch (error) {
+        console.error('Unable to delete post: ', error);
+        return sendError(res, '', 'Unable to delete post.');
+    }
+};
+
