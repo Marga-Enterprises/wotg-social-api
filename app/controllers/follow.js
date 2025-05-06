@@ -1,5 +1,6 @@
 const Follow = require('../models/Follow');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 const { 
     sendError, 
@@ -140,7 +141,7 @@ exports.getFollowingByUserId = async (req, res) => {
     }
 }
 
-exports.followUserById = async (req, res) => {
+exports.followUserById = async (req, res, io) => {
     const token = getToken(req.headers);
     const decodedToken = decodeToken(token);
     

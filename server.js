@@ -62,8 +62,8 @@ app.use("/journals", journalRoutes);
 app.use("/music", musicRoutes); // Music API routes
 app.use("/albums", albumRoutes); // Music API routes
 app.use("/playlists", playListRoutes); // Music API routes
-app.use("/follow", followRoutes); // Music API routes
-app.use("/posts", postRoutes);
+app.use("/follow", followRoutes(io)); // Music API routes
+app.use("/posts", postRoutes(io));
 app.use("/uploads", express.static("uploads"));
 
 

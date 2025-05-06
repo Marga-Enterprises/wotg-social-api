@@ -370,4 +370,3 @@ exports.deleteById = async (req, res) => {
         return sendError(res, '', 'Unable to delete post.');
     }
 };
-
