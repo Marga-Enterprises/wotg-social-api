@@ -139,8 +139,8 @@ exports.update = async (req, res) => {
 
             if (req.file) {
                 try {
-                    const convertedFilename = await processImageToSpace(req.file);
-                    const processedImage = await uploadFileToSpaces(convertedFilename);
+                    // const convertedFilename = await processImageToSpace(req.file);
+                    const processedImage = await uploadFileToSpaces(req.file);
                     // If image was converted to webp, use it; else fallback to original filename
                     user.user_profile_picture = processedImage;
                 } catch (convErr) {

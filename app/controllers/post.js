@@ -9,8 +9,13 @@ const {
     sendErrorUnauthorized, 
     decodeToken, 
     processImageToSpace,
+    processVideoToSpace,
+    processAudioToSpace,
     removeFileFromSpaces
 } = require('../../utils/methods');
+
+const uploadMemory = require('./uploadMemory');
+const { uploadFileToSpaces } = require('./spaceUploader');
 
 const redisClient = require('../../config/redis');
 const { clearPostsCache } = require('../../utils/clearBlogCache');
@@ -53,7 +58,6 @@ exports.list = async (req, res) => {
             order: Sequelize.literal('RAND()'),
             offset,
             limit,
-            raw: true, // required for Sequelize.col to work
             attributes: [
                 'id',
                 'user_id',
@@ -62,16 +66,19 @@ exports.list = async (req, res) => {
                 'reaction_count',
                 'comments_count',
                 'shares_count',
-                [Sequelize.col('author.user_fname'), 'author_fname'],
-                [Sequelize.col('author.user_lname'), 'author_lname'],
             ],
             include: [
                 {
-                model: User,
-                as: 'author',
-                attributes: [], // must be empty when using Sequelize.col
+                  model: User,
+                  as: 'author',
+                  attributes: ['user_fname', 'user_lname'],
+                },
+                {
+                  model: PostMedia,
+                  as: 'media',
+                  attributes: ['id', 'url', 'type', 'thumbnail'],
                 }
-            ],
+            ]
         });
 
         const totalPages = Math.ceil(count / pageSize);
@@ -112,9 +119,27 @@ exports.getById = async (req, res) => {
 
         const post = await Post.findOne({
             where: { id: postId },
-            include: {
-
-            }
+            attributes: [
+                'id',
+                'user_id',
+                'content',
+                'visibility',
+                'reaction_count',
+                'comments_count',
+                'shares_count',
+            ],
+            include: [
+                {
+                  model: User,
+                  as: 'author',
+                  attributes: ['user_fname', 'user_lname'],
+                },
+                {
+                  model: PostMedia,
+                  as: 'media',
+                  attributes: ['id', 'url', 'type', 'thumbnail'],
+                }
+            ],
         });
 
         if (!post) sendError(res, '', 'Post not found.');
@@ -127,3 +152,163 @@ exports.getById = async (req, res) => {
         return sendError(res, '', 'Unable to get post.');
     };
 };
+
+exports.create = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    const userId = decodedToken.user.id;
+
+    try {
+        uploadMemory.array("file", 3)(req, res, async (err) => {
+            const { content, visibility } = req.body;
+
+            const files = req.files;
+
+            const newPost = await Post.create({
+                content,
+                visibility,
+                user_id: userId,
+            });
+
+            if (files.length > 0) {
+                console.log('[[[[[[[[[[[FILESSSS]]]]]]]]]]]', files);
+
+                let convertedFile = null;
+                let processedFile = null;
+                let filetype = null;
+            
+                for (const file of files) {
+                    const mimetype = file.mimetype;
+                    
+                    try {
+                        if (mimetype.startsWith('image/')) {
+                            console.log('[[[[[[[[[[[FILESSSS IMAGES]]]]]]]]]]]', file);
+                            convertedFile = await processImageToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                            filetype = 'image';
+                        } else if (mimetype.startsWith('video/')) {
+                            console.log('[[[[[[[[[[[FILESSSS VIDEO]]]]]]]]]]]', file);
+                            convertedFile = await processVideoToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                            filetype = 'video';
+                        } else if (mimetype.startsWith('audio/')) {
+                            console.log('[[[[[[[[[[[FILESSSS AUDIO]]]]]]]]]]]', file);
+                            processedFile = await uploadFileToSpaces(file); // Only upload for audio
+                            filetype = 'audio';
+                        } else {
+                            // Return error if the file type is not audio, video, or image
+                            return sendError(res, '', 'Please upload only audio, video, or image files.');
+                        }
+            
+                        // Create a new PostMedia entry for each processed file
+                        await PostMedia.create({
+                            post_id: newPost.id,
+                            url: processedFile,
+                            type: filetype,
+                        });
+            
+                    } catch (error) {
+                        console.error("Error processing file: ", error);
+                        return sendError(res, '', 'There was an error processing the file.');
+                    }
+                }
+            }            
+
+            await clearPostsCache();
+
+            return sendSuccess(res, newPost, 'New Post Created');
+        });
+    } catch (error) {
+        console.log('Unable to create post: ', error);
+        return sendError(res, '', 'Unable to create post');
+    }
+}
+
+exports.updateById = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    const userId = decodedToken.user.id;
+
+    try {
+        const { postId } = req.params;
+        uploadMemory.array("file", 3)(req, res, async (err) => {
+            const { content, visibility, filesToDelete } = req.body;
+
+            const files = req.files;
+
+            const post = await Post.findOne({
+                where: { id: postId }
+            });
+
+            if (post.id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
+
+            if (filesToDelete.length > 0) {
+                for (const fileToDelete of filesToDelete) {
+                    await PostMedia.destroy({
+                        where: { url: fileToDelete }
+                    });
+                }
+            }
+
+            if (files.length > 0) {
+                let convertedFile = null;
+                let processedFile = null;
+                let filetype = null;
+            
+                // Use a for...of loop to handle async operations correctly
+                for (const file of files) {
+                    const mimetype = file.mimetype;
+                    
+                    try {
+                        if (mimetype.startsWith('image/')) {
+                            convertedFile = await processImageToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                            filetype = 'image';
+                        } else if (mimetype.startsWith('video/')) {
+                            convertedFile = await processVideoToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                            filetype = 'video';
+                        } else if (mimetype.startsWith('audio/')) {
+                            processedFile = await uploadFileToSpaces(file); // Only upload for audio
+                            filetype = 'audio';
+                        } else {
+                            // Return error if the file type is not audio, video, or image
+                            return sendError(res, '', 'Please upload only audio, video, or image files.');
+                        }
+            
+                        // Create a new PostMedia entry for each processed file
+                        await PostMedia.create({
+                            post_id: newPost.id,
+                            file_url: processedFile,
+                            type: filetype,
+                        });
+            
+                    } catch (error) {
+                        console.error("Error processing file: ", error);
+                        return sendError(res, '', 'There was an error processing the file.');
+                    }
+                }
+            }
+            
+            await post.update({
+                content,
+                visibility
+            });
+
+            await clearPostsCache(postId);
+
+            return sendSuccess(res, post, 'Post Updated');
+        });
+    } catch (error) {
+        console.log('Unable to create post: ', error);
+        return sendError(res, '', 'Unable to create post');
+    }
+}

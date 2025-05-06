@@ -8,7 +8,6 @@ const {
   getToken,
   sendErrorUnauthorized,
   removeFileFromSpaces,
-  clearRecommendedCache,
   decodeToken,
 } = require("../../utils/methods");
 
@@ -16,7 +15,7 @@ const uploadMemory = require('./uploadMemory');
 
 const { uploadFileToSpaces } = require('./spaceUploader');
 
-const { clearMusicCache } = require("../../utils/clearBlogCache");
+const { clearMusicCache, clearRecommendedCache } = require("../../utils/clearBlogCache");
 const { Sequelize, Op } = require("sequelize");
 
 const redisClient = require("../../config/redis");

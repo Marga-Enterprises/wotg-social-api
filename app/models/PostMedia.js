@@ -23,7 +23,7 @@ PostMedia.init({
         onDelete: 'CASCADE',
     },
     type: {
-        type: DataTypes.ENUM('image', 'video'),
+        type: DataTypes.ENUM('image', 'video', 'audio'),
         allowNull: false,
     },
     url: {

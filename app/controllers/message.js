@@ -187,8 +187,8 @@ exports.sendFileMessage = (req, res, io) => {
     let finalFileName = req.file.filename;
 
     try {
-      const convertedFilename = await processImageToSpace(req.file);
-      const processedImage = await uploadFileToSpaces(convertedFilename);
+      // const convertedFilename = await processImageToSpace(req.file);
+      const processedImage = await uploadFileToSpaces(req.file);
       if (processedImage) finalFileName = processedImage;
       
     } catch (error) {
