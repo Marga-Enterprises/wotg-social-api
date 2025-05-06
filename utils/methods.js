@@ -11,6 +11,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const streamifier = require('streamifier');
 const { PassThrough } = require('stream');
+const sharp = require('sharp');
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -187,45 +188,41 @@ exports.processVideoToSpace = (file) => {
   })
 };
 
-exports.processImageToSpace = (file) => {
-  return new Promise((resolve, reject) => {
-    const inputStream = streamifier.createReadStream(file.buffer);
-    const outputChunks = [];
-    const outputStream = new PassThrough();
+// Function to process the image and return the new filename after converting to WebP
+exports.processImageToSpace = async (file) => {
+  // Check if the file and its properties exist
+  if (!file || !file.buffer || !file.originalname) {
+    throw new Error('Invalid file object: missing buffer or originalname');
+  }
 
-    const command = ffmpeg(inputStream)
-      // ❌ REMOVE .inputFormat() entirely for images!
-      .outputFormat('webp') // ✅ Always convert to webp
-      .videoFilters('scale=iw*0.4:ih*0.4') // ✅ Resize to 40% of original
-      .outputOptions([
-        '-qscale:v 75',
-        '-compression_level 6',
-        '-preset photo',
-        '-loop 0',
-        '-an',
-        '-vsync 0'
-      ])
-      .on('error', (err) => {
-        console.error('❌ FFmpeg image conversion failed:', err);
-        reject(err);
-      })
-      .on('end', () => {
-        const outputBuffer = Buffer.concat(outputChunks);
-        console.log('✅ Image compressed and converted to webp (in-memory).');
-        resolve({
-          buffer: outputBuffer,
-          mimetype: 'image/webp',
-          originalname: `profile.webp`,
-        });
-      });
+  const fileBuffer = file.buffer; // Image file buffer passed to the function
 
-    command.pipe(outputStream, { end: true });
+  try {
+    // Process the image with Sharp to convert it to WebP
+    const webpBuffer = await sharp(fileBuffer)
+      .webp()  // Converts the image to WebP format
+      .toBuffer();
 
-    outputStream.on('data', (chunk) => {
-      outputChunks.push(chunk);
-    });
-  });
+    // Generate a new filename with the original name but with a "_converted" suffix and .webp extension
+    const baseName = file.originalname.split('.')[0];  // Get the original file name without extension
+    const newFileName = `${baseName}_converted.webp`;   // Add "_converted" suffix and change extension to .webp
+
+    const convertedFile = {
+      fieldname: file.fieldname,        // Same fieldname as the original
+      originalname: newFileName,        // New WebP filename
+      encoding: '7bit',                 // You can specify encoding or leave as is
+      mimetype: 'image/webp',           // New MIME type for WebP images
+      size: webpBuffer.length,          // The size of the WebP image buffer
+      buffer: webpBuffer,    
+    }
+
+    return convertedFile;
+  } catch (error) {
+    console.error('Error processing image:', error);
+    throw error;  // Throwing the error to be handled by the caller
+  }
 };
+
 
 exports.removeFileFromSpaces = async (folder, key) => {
   try {

@@ -381,8 +381,8 @@ exports.updateChatroom = async (req, res, io) => {
                 await removeFileFromSpaces('images', chatroom.chatroom_photo);
             }
 
-            // const convertedImage = await processImageToSpace(req.file);
-            const processedImage = await uploadFileToSpaces(req.file);
+            const convertedImage = await processImageToSpace(req.file);
+            const processedImage = await uploadFileToSpaces(convertedImage);
 
             // Update fields dynamically
             const updateFields = {};

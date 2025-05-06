@@ -10,7 +10,6 @@ const {
     decodeToken, 
     processImageToSpace,
     processVideoToSpace,
-    processAudioToSpace,
     removeFileFromSpaces
 } = require('../../utils/methods');
 
@@ -175,8 +174,6 @@ exports.create = async (req, res) => {
             });
 
             if (files.length > 0) {
-                console.log('[[[[[[[[[[[FILESSSS]]]]]]]]]]]', files);
-
                 let convertedFile = null;
                 let processedFile = null;
                 let filetype = null;
@@ -186,17 +183,14 @@ exports.create = async (req, res) => {
                     
                     try {
                         if (mimetype.startsWith('image/')) {
-                            console.log('[[[[[[[[[[[FILESSSS IMAGES]]]]]]]]]]]', file);
                             convertedFile = await processImageToSpace(file); // Ensure async processing
                             processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
                             filetype = 'image';
                         } else if (mimetype.startsWith('video/')) {
-                            console.log('[[[[[[[[[[[FILESSSS VIDEO]]]]]]]]]]]', file);
                             convertedFile = await processVideoToSpace(file); // Ensure async processing
                             processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
                             filetype = 'video';
                         } else if (mimetype.startsWith('audio/')) {
-                            console.log('[[[[[[[[[[[FILESSSS AUDIO]]]]]]]]]]]', file);
                             processedFile = await uploadFileToSpaces(file); // Only upload for audio
                             filetype = 'audio';
                         } else {

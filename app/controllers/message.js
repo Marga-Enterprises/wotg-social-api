@@ -187,11 +187,12 @@ exports.sendFileMessage = (req, res, io) => {
     let finalFileName = req.file.filename;
 
     try {
-      // const convertedFilename = await processImageToSpace(req.file);
-      const processedImage = await uploadFileToSpaces(req.file);
+      const convertedFilename = await processImageToSpace(req.file);
+      const processedImage = await uploadFileToSpaces(convertedFilename);
       if (processedImage) finalFileName = processedImage;
       
     } catch (error) {
+      console.error('[[[[[[[[[IMAGE CONVERSION FAILED]]]]]]]]]', error);
       return sendError(res, error, 'Image conversion failed.');
     }
 

@@ -195,8 +195,8 @@ exports.create = async (req, res) => {
             let processedImage = null;
 
             if (imageFile) {
-              // convertedImage = await processImageToSpace(imageFile);
-              processedImage = await uploadFileToSpaces(imageFile);
+              convertedImage = await processImageToSpace(imageFile);
+              processedImage = await uploadFileToSpaces(convertedImage);
             }
             
             // ✅ Create the playlist
@@ -251,8 +251,8 @@ exports.update = async (req, res) => {
 
             if (imageFile) {
                 // ✅ Process the new image file
-                // const convertedImage = await processImageToSpace(imageFile);
-                const processedImage = await uploadFileToSpaces(imageFile);
+                const convertedImage = await processImageToSpace(imageFile);
+                const processedImage = await uploadFileToSpaces(convertedImage);
 
                 // ✅ Remove the old image file if it exists
                 if (playlist.cover_image) {
