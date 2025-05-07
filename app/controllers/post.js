@@ -1,6 +1,12 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
 const PostMedia = require('../models/PostMedia');
+const Comment = require('../models/Comment');
+const CommentMedia = require('../models/CommentMedia');
+const Notification = require('../models/Notification');
+const Tag = require('../models/Tag');
+const Subscription = require('../models/Subscription');
+const { sendNotification } = require('../../utils/sendNotification'); 
 
 const { 
     sendError, 
@@ -17,7 +23,7 @@ const uploadMemory = require('./uploadMemory');
 const { uploadFileToSpaces } = require('./spaceUploader');
 
 const redisClient = require('../../config/redis');
-const { clearPostsCache } = require('../../utils/clearBlogCache');
+const { clearPostsCache, clearCommentsCache, clearRepliesCache } = require('../../utils/clearBlogCache');
 
 const { Op, Sequelize } = require('sequelize');
 
@@ -152,7 +158,7 @@ exports.getById = async (req, res) => {
     };
 };
 
-exports.create = async (req, res) => {
+exports.create = async (req, res, io) => {
     const token = getToken(req.headers);
     const decodedToken = decodeToken(token);
 
@@ -160,12 +166,14 @@ exports.create = async (req, res) => {
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
     const userId = decodedToken.user.id;
+    const senderName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
 
     try {
         uploadMemory.array("file", 3)(req, res, async (err) => {
-            const { content, visibility } = req.body;
+            const { content, visibility, taggedUserIds } = req.body;
 
             const files = req.files;
+            const taggedUserIdsToArray = taggedUserIds ? taggedUserIds.split(',') : [];
 
             const newPost = await Post.create({
                 content,
@@ -210,7 +218,25 @@ exports.create = async (req, res) => {
                         return sendError(res, '', 'There was an error processing the file.');
                     }
                 }
-            }            
+            };
+            
+            if (taggedUserIdsToArray.length > 0) {
+                for (const taggedUserId of taggedUserIdsToArray) {
+                    await Tag.create({
+                        user_id: taggedUserId,
+                        post_id: newPost.id
+                    });
+    
+                    await sendNotifiAndEmit ({
+                        sender_id: userId,
+                        recipient_id: taggedUserId,
+                        target_type: 'Tag',
+                        type: 'tag',
+                        message: `${senderName} tagged you in a post`,
+                        io
+                    })
+                }
+            }
 
             await clearPostsCache();
 
@@ -370,3 +396,507 @@ exports.deleteById = async (req, res) => {
         return sendError(res, '', 'Unable to delete post.');
     }
 };
+
+exports.getCommentsByPostId = async (req, res) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendError(res, '', 'Please login first.');
+    if (!decodedToken) return sendError(res, '', 'Token not valid, unable to decode.');
+
+    try {
+        const { postId } = req.params;
+
+        if (!postId) return sendError(res, '', 'Please add post ID first');
+
+        const post = await Post.findOne({
+            where: { id: postId }
+        });
+
+        if (!post) return sendError(res, '', 'Post not found.');
+
+        let { pageIndex, pageSize } = req.query;
+
+        if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize)) {
+            return sendError(res, '', 'Missing or invalid query parameters: pageIndex and pageSize must be > 0.');
+        }
+
+        pageIndex = parseInt(pageIndex);
+        pageSize = parseInt(pageSize);
+
+        const offset = (pageIndex - 1) * pageSize;
+        const limit = pageSize;
+
+        const cacheKey = `comments:page:${pageIndex}:${pageSize}:${postId ? `post:${postId}` : ''}`;
+        const cached = await redisClient.get(cacheKey);
+
+        if (cached) {
+            return sendSuccess(res, JSON.parse(cached), 'From cache');
+        }
+
+        let where = {}
+
+        where[Op.or] = [{ post_id: postId }];
+
+        const { count, rows } = await Comment.findAndCountAll({
+            where,
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset,
+            include: [
+                {
+                  model: User,
+                  as: 'author',
+                  attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                },
+                {
+                  model: Comment,
+                  as: 'replies', // Just in case of deeper nesting (optional)
+                  required: false
+                },
+                {
+                    model: CommentMedia,
+                    as: 'media', // Just in case of deeper nesting (optional)
+                    required: false
+                }
+            ]
+        });
+
+        const totalPages = Math.ceil(count / pageSize);
+
+        const response = {
+            pageIndex,
+            pageSize,
+            totalPages,
+            totalRecords: count,
+            comments: rows
+        }
+
+        await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 60 * 60);
+
+        return sendSuccess(res, response, 'Comments retrieve successfully.')
+    } catch (error) {
+        console.log('Unable to get comments by post id: ', error);
+        return sendError(res, '', 'Unable to get comments by post id.');
+    }
+};
+
+exports.addComment = async (req, res, io) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    const userId = decodedToken.user.id;
+    const followerName =`${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+
+    try {
+        uploadMemory.single("file")(req, res, async (err) => {
+            const { postId } = req.params;
+            const { content } = req.body;
+            const file = req.file;
+
+            if (!postId || !content) {
+                return sendError(res, '', 'Please provide the required fields (Post ID, Content)');
+            }
+
+            const post = await Post.findOne({
+                where: { id: postId }
+            });
+
+            if (!post) return sendError(res, '', 'Post not found.');
+
+            const newComment = await Comment.create({
+                content,
+                post_id: postId,
+                user_id: userId, 
+            });
+
+            if (file) {
+                let convertedFile = null;
+                let processedFile = null;
+                let filetype = null;
+
+                const mimetype = file.mimetype;
+                
+                if (mimetype.startsWith('image/')) {
+                    convertedFile = await processImageToSpace(file); // Ensure async processing
+                    processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                    filetype = 'image';
+                } else if (mimetype.startsWith('video/')) {
+                    convertedFile = await processVideoToSpace(file); // Ensure async processing
+                    processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                    filetype = 'video';
+                } else if (mimetype.startsWith('audio/')) {
+                    processedFile = await uploadFileToSpaces(file); // Only upload for audio
+                    filetype = 'audio';
+                } else {
+                    return sendError(res, '', 'Please upload only audio, video, or image files.');
+                }
+    
+                // Create a new PostMedia entry for each processed file
+                await CommentMedia.create({
+                    comment_id: newComment.id,
+                    url: processedFile,
+                    type: filetype,
+                });
+            }
+
+            io.to(post.user_id).emit('new_comment', newComment);
+
+            await sendNotifiAndEmit({
+                sender_id: userId,
+                recipient_id: post.user_id,
+                target_type: 'Comment',
+                type: 'comment',
+                message: `${followerName} commented on your post`,
+                io
+            });
+
+            await clearCommentsCache();
+
+            return sendSuccess(res, newComment, 'Successfully commented in post.');
+        });
+    } catch (error) {
+        console.error('Unable to add comment for this post.');
+        return sendError(res, '', 'Unable to add comment for this post.')      
+    }
+};
+
+exports.getRepliesByCommentId = async (req, res) => {
+  const token = getToken(req.headers);
+  const decodedToken = decodeToken(token);
+
+  if (!token) return sendError(res, '', 'Please login first.');
+  if (!decodedToken) return sendError(res, '', 'Token not valid, unable to decode.');
+
+  try {
+    const { commentId } = req.params;
+
+    if (!commentId) return sendError(res, '', 'Parent Comment ID is required.');
+
+    let { pageIndex, pageSize } = req.query;
+
+    if (!pageIndex || !pageSize || isNaN(pageIndex) || isNaN(pageSize)) {
+      return sendError(res, '', 'Missing or invalid query parameters: pageIndex and pageSize must be > 0.');
+    }
+
+    pageIndex = parseInt(pageIndex);
+    pageSize = parseInt(pageSize);
+    const offset = (pageIndex - 1) * pageSize;
+    const limit = pageSize;
+
+    const cacheKey = `replies:page:${pageIndex}:${pageSize}:parent:${commentId}`;
+    const cached = await redisClient.get(cacheKey);
+
+    if (cached) {
+      return sendSuccess(res, JSON.parse(cached), 'From cache');
+    }
+
+    const where = { parent_comment_id: commentId };
+
+    const { count, rows } = await Comment.findAndCountAll({
+      where,
+      order: [['createdAt', 'ASC']],
+      limit,
+      offset,
+      include: [
+        {
+          model: User,
+          as: 'author',
+          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+        },
+        {
+          model: Comment,
+          as: 'replies', // Just in case of deeper nesting (optional)
+          required: false
+        },
+        {
+            model: CommentMedia,
+            as: 'media', // Just in case of deeper nesting (optional)
+            required: false
+        }
+      ]
+    });
+
+    const totalPages = Math.ceil(count / pageSize);
+
+    const response = {
+      pageIndex,
+      pageSize,
+      totalPages,
+      totalRecords: count,
+      replies: rows
+    };
+
+    await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 60 * 60); // Cache for 1 hour
+
+    return sendSuccess(res, response, 'Replies retrieved successfully.');
+  } catch (error) {
+    console.error('❌ Unable to get replies: ', error);
+    return sendError(res, '', 'Unable to get replies for this comment.');
+  }
+};
+
+exports.addReplyToComment = async (req, res, io) => {
+  const token = getToken(req.headers);
+  const decodedToken = decodeToken(token);
+
+  if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+  if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+  const userId = decodedToken.user.id;
+  const replierName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+
+  try {
+    uploadMemory.single("file")(req, res, async (err) => {
+      const { postId, commentId } = req.params;
+      const { content } = req.body;
+      const file = req.file;
+
+      if (!postId || !commentId || !content) {
+        return sendError(res, '', 'Missing required fields (Post ID, Parent Comment ID, Content)');
+      }
+
+      const parentComment = await Comment.findOne({ where: { id: commentId } });
+      if (!parentComment) return sendError(res, '', 'Parent comment not found.');
+
+      const newReply = await Comment.create({
+        content,
+        post_id: postId,
+        user_id: userId,
+        parent_comment_id: commentId,
+        level: 1,
+      });
+
+      if (file) {
+        let convertedFile = null;
+        let processedFile = null;
+        let filetype = null;
+
+        const mimetype = file.mimetype;
+
+        if (mimetype.startsWith('image/')) {
+          convertedFile = await processImageToSpace(file);
+          processedFile = await uploadFileToSpaces(convertedFile);
+          filetype = 'image';
+        } else if (mimetype.startsWith('video/')) {
+          convertedFile = await processVideoToSpace(file);
+          processedFile = await uploadFileToSpaces(convertedFile);
+          filetype = 'video';
+        } else if (mimetype.startsWith('audio/')) {
+          processedFile = await uploadFileToSpaces(file);
+          filetype = 'audio';
+        } else {
+          return sendError(res, '', 'Only image, video, or audio files are allowed.');
+        }
+
+        await CommentMedia.create({
+          comment_id: newReply.id,
+          url: processedFile,
+          type: filetype,
+        });
+      }
+
+      io.to(parentComment.user_id).emit('new_reply', newReply);
+
+      await sendNotifiAndEmit({
+        sender_id: userId,
+        recipient_id: parentComment.user_id,
+        target_type: 'Comment',
+        type: 'comment',
+        message: `${replierName} replied to your comment`,
+        io
+      });
+
+      await clearRepliesCache(commentId);
+
+      return sendSuccess(res, newReply, 'Reply added successfully.');
+    });
+  } catch (error) {
+    console.error('Unable to add reply to comment.', error);
+    return sendError(res, '', 'Unable to add reply.');
+  }
+};
+
+exports.updateComment = async (req, res, io) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    try {
+        uploadMemory.single("file")(req, res, async (err) => {
+            const { postId, commentId } = req.params;
+            const { content, fileToDelete } = req.body;
+            const file = req.file;
+
+            if (!postId || !commentId) {
+                return sendError(res, '', 'Please provide the required fields (Post ID, Comment ID)');
+            }
+
+            const post = await Post.findOne({
+                where: { id: postId }
+            });
+
+            const comment = await Comment.findOne({
+                where: { id: commentId }
+            });
+
+            if (!post || !comment) return sendError(res, '', 'Post not found.');
+
+            console.log('FILEEE TO DELETEEE', fileToDelete);
+
+            if (fileToDelete) {
+                if (fileToDelete.endsWith('.webp')) {
+                    await removeFileFromSpaces('images', fileToDelete);
+                } else if (fileToDelete.endsWith('.webm')) {
+                    await removeFileFromSpaces('videos', fileToDelete);
+                } else {
+                    await removeFileFromSpaces('audios', fileToDelete);
+                }
+
+                await CommentMedia.destroy({
+                    where: { url: fileToDelete }
+                });
+            }
+
+            if (file) {
+                let convertedFile = null;
+                let processedFile = null;
+                let filetype = null;
+
+                const mimetype = file.mimetype;
+                
+                if (mimetype.startsWith('image/')) {
+                    convertedFile = await processImageToSpace(file); // Ensure async processing
+                    processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                    filetype = 'image';
+                } else if (mimetype.startsWith('video/')) {
+                    convertedFile = await processVideoToSpace(file); // Ensure async processing
+                    processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                    filetype = 'video';
+                } else if (mimetype.startsWith('audio/')) {
+                    processedFile = await uploadFileToSpaces(file); // Only upload for audio
+                    filetype = 'audio';
+                } else {
+                    return sendError(res, '', 'Please upload only audio, video, or image files.');
+                }
+    
+                // Create a new PostMedia entry for each processed file
+                await CommentMedia.create({
+                    comment_id: comment.id,
+                    url: processedFile,
+                    type: filetype,
+                });
+            }
+
+            await comment.update({ 
+              content
+            });
+
+            io.to(post.user_id).emit('comment_updated ', comment);
+
+            await clearCommentsCache(commentId);
+
+            return sendSuccess(res, comment, 'Comment updated successfully');
+        });
+    } catch (error) {
+        console.error('Unable to add comment for this post.');
+        return sendError(res, '', 'Unable to add comment for this post.')      
+    }
+};
+
+exports.deleteCommentById = async (req, res, io) => {
+    const token = getToken(req.headers);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+
+    try {
+        const { commentId } = req.params;
+
+        if (!commentId) return sendError(res, '', 'Please provide the Comment ID');
+        
+        const comment = await Comment.findOne({
+            where: { id: commentId },
+            include: [
+                {
+                    model: CommentMedia,
+                    as: 'media',
+                    attributes: ['url']
+                }
+            ],
+        });
+
+        if (!comment) return sendError(res, '', 'Comment not found.');
+
+        for (const media of comment.media) {
+            if (media.url.includes('.webp')) {
+                await removeFileFromSpaces('images', media.url);
+            } else if (media.url.includes('.webm')) {
+                await removeFileFromSpaces('videos', media.url);
+            } else {
+                await removeFileFromSpaces('audios', media.url);
+            }
+        }
+
+        await CommentMedia.destroy({
+            where: { comment_id: commentId }
+        });
+
+        await Comment.destroy({
+            where: { id: commentId }
+        });
+
+        await clearCommentsCache(commentId);
+
+        io.emit('comment_deleted', commentId);
+
+        return sendSuccess(res, '', 'Comment deleted successfully.');
+    } catch (error) {
+        console.error('Failed to delete comment: ', error);
+        return sendError(res, '', 'Failed to delete comment.');
+    }
+};
+
+const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, message, io }) => {
+  const newNotif = await Notification.create({
+    sender_id,
+    recipient_id,
+    target_type,
+    type,
+    message
+  });
+
+  const notification = await Notification.findOne({
+    where: { id: newNotif.dataValues.id },
+    raw: true
+  });
+
+  io.to(recipient_id).emit('new_notification', notification);
+
+  const subscription = await Subscription.findOne({
+      where: { user_id: recipient_id },
+      raw: true,
+  });
+
+  const subscriptionSub = typeof subscription?.subscription === 'string'
+                ? JSON.parse(subscription?.subscription)
+                : subscription?.subscription;
+
+  try {
+      const fcmToken = subscriptionSub?.fcmToken; // Access safely
+      
+      if (fcmToken) {
+          await sendNotification(
+              fcmToken,
+              'WOTG Community',
+              message
+          );
+      }
+  } catch (error) {
+      console.error('Error sending push notification:', error);
+  }
+}

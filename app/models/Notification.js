@@ -1,7 +1,6 @@
 const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../../config/db');
 const User = require('./User');
-const Post = require('./Post');
 
 class Notification extends Model {}
 
@@ -23,12 +22,10 @@ Notification.init({
   target_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'ID of the related item (post, comment, tag, etc.)'
   },
   target_type: {
     type: DataTypes.ENUM('Post', 'Comment', 'Tag', 'User', 'Follow', 'Share'),
     allowNull: false,
-    comment: 'Type of the target model'
   },
   type: {
     type: DataTypes.ENUM('like', 'comment', 'follow', 'mention', 'share', 'tag'),
@@ -57,6 +54,5 @@ Notification.init({
 
 Notification.belongsTo(User, { foreignKey: 'recipient_id', as: 'recipient' });
 Notification.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
-Notification.belongsTo(Post, { foreignKey: 'post_id', as: 'post' });
 
 module.exports = Notification;

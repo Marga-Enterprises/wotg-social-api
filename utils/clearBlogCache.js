@@ -187,14 +187,14 @@ exports.clearFollowingCache = async (userId) => {
   } catch (error) {
     console.error("❌ Error clearing following cache:", error);
   };
-}
+};
 
 exports.clearPostsCache = async (postId) => {
   try {
     console.log("🧹 Clearing posts cache...");
 
     const pattern = "posts:page:*"
-    const filteredPattern = "playlists:page*:user*";
+    const filteredPattern = "posts:page*:user*";
     const postKeys = postId ? await redisClient.keys(`post_${postId}`) : [];
 
     const allPaginatedKeys = await redisClient.keys(pattern);
@@ -212,4 +212,53 @@ exports.clearPostsCache = async (postId) => {
   } catch (error) {
     console.error("❌ Error clearing posts cache:", error);
   };
-}
+};
+
+exports.clearCommentsCache = async (commentId) => {
+  try {
+    console.log("🧹 Clearing comments cache...");
+
+    const pattern = "comments:page:*"
+    const filteredPattern = "comments:page*:post*";
+    const commentKeys = commentId ? await redisClient.keys(`comment_${commentId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...commentKeys])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} comments cache entries.`);
+    } else {
+      console.log("ℹ️ No matching post cache keys found.");
+    }
+
+  } catch (error) {
+    console.error("❌ Error clearing comments cache:", error);
+  };
+};
+
+exports.clearRepliesCache = async (commentId) => {
+  try {
+    console.log("🧹 Clearing replies cache...");
+
+    const pattern = "replies:page:*";
+    const filteredPattern = "replies:page*:parent*";
+    const specificCommentKey = commentId ? await redisClient.keys(`reply_${commentId}`) : [];
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+    const allFilteredKeys = await redisClient.keys(filteredPattern);
+
+    const allKeys = [...new Set([...allPaginatedKeys, ...allFilteredKeys, ...specificCommentKey])];
+
+    if (allKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} replies cache entries.`);
+    } else {
+      console.log("ℹ️ No matching reply cache keys found.");
+    }
+  } catch (error) {
+    console.error("❌ Error clearing replies cache:", error);
+  }
+};

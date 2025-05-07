@@ -1,6 +1,8 @@
 const Follow = require('../models/Follow');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Subscription = require('../models/Subscription'); // Import Message model
+const { sendNotification } = require('../../utils/sendNotification'); 
 
 const { 
     sendError, 
@@ -152,6 +154,8 @@ exports.followUserById = async (req, res, io) => {
         const { userId } = req.params;
         const followerId = decodedToken.user.id;
 
+        const followerName =`${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+
         if (!userId) return sendError(res, '', 'No User Id detected');
         if (userId === followerId) return sendError(res, '', 'Unable to follow yourself.');
 
@@ -177,6 +181,15 @@ exports.followUserById = async (req, res, io) => {
 
         await clearFollowersCache(userId);
         await clearFollowingCache(followerId);
+
+        await sendNotifiAndEmit({
+          sender_id: followerId,
+          recipient_id: userId,
+          target_type: 'Follow',
+          type: 'follow',
+          message: `${followerName} started following you.`,
+          io
+        });    
 
         return sendSuccess(res, result, 'User followed successfully');
     } catch (err) {
@@ -224,4 +237,44 @@ exports.unfollowUserById = async (req, res) => {
         console.error('Unable to Unfollow this user: ', error);
         return sendError(res, '', 'Unable to Unfollow this user.');
     }
+}
+
+const sendNotifiAndEmit = async ({sender_id, recipient_id, target_type, type, message, io}) => {
+  const newNotif = await Notification.create({
+    sender_id,
+    recipient_id,
+    target_type,
+    type,
+    message
+  });
+
+  const notification = await Notification.findOne({
+    where: { id: newNotif.dataValues.id },
+    raw: true
+  });
+
+  io.to(sender_id).emit('new_notification', notification);
+
+  const subscription = await Subscription.findOne({
+      where: { user_id: recipient_id },
+      raw: true,
+  });
+
+  const subscriptionSub = typeof subscription.subscription === 'string'
+                ? JSON.parse(subscription.subscription)
+                : subscription.subscription;
+
+  try {
+      const fcmToken = subscriptionSub?.fcmToken; // Access safely
+      
+      if (fcmToken) {
+          await sendNotification(
+              fcmToken,
+              'WOTG Community',
+              message
+          );
+      }
+  } catch (error) {
+      console.error('Error sending push notification:', error);
+  }
 }
