@@ -14,6 +14,8 @@ const {
     removeFileFromSpaces
 } = require("../../utils/methods");
 
+const { clearPostsCache, clearCommentsCache, clearRepliesCache } = require('../../utils/clearBlogCache');
+
 exports.list = async (req, res) => {
     let token = getToken(req.headers);
     if (token) {
@@ -148,6 +150,10 @@ exports.update = async (req, res) => {
                     return sendError(res, convErr, "Image processing failed.");
                 }
             }
+
+            await clearPostsCache();
+            await clearCommentsCache();
+            await clearRepliesCache();
 
             await user.save();
             return sendSuccess(res, user);
