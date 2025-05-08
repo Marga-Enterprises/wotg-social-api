@@ -47,12 +47,12 @@ exports.list = async (req, res) => {
         const offset = (pageIndex - 1) * pageSize;
         const limit = pageSize;
 
-        const cacheKey = `posts:page:${pageIndex}:${pageSize}:${userId ? `user:${userId}` : ''}`;
+        /*const cacheKey = `posts:page:${pageIndex}:${pageSize}:${userId ? `user:${userId}` : ''}`;
         const cached = await redisClient.get(cacheKey);
 
         if (cached) {
             return sendSuccess(res, JSON.parse(cached), 'From cache');
-        }
+        }*/
 
         const where = {};
 
@@ -115,7 +115,7 @@ exports.list = async (req, res) => {
             posts: rows
         }
 
-        await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 60 * 60);
+        // await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 60 * 60);
 
         return sendSuccess(res, response, 'Playlist retrieve successfully.')
     } catch (error) {
