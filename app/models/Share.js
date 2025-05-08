@@ -48,7 +48,7 @@ Share.init({
 Share.belongsTo(User, { foreignKey: 'user_id', as: 'sharer' });
 User.hasMany(Share, { foreignKey: 'user_id', as: 'shares' });
 
-Share.belongsTo(Post, { foreignKey: 'original_post_id', as: 'original_post' });
-Post.hasMany(Share, { foreignKey: 'original_post_id', as: 'shares' });
+Share.belongsTo(Post, { foreignKey: 'original_post_id', as: 'original_post_history' });
+Post.hasMany(Share, { foreignKey: 'original_post_id', as: 'shares_history' });
 
 module.exports = Share;

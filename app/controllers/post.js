@@ -1,5 +1,7 @@
 const Post = require('../models/Post');
+const Share = require('../models/Share');
 const User = require('../models/User');
+const Reaction = require('../models/Reaction');
 const PostMedia = require('../models/PostMedia');
 const Comment = require('../models/Comment');
 const CommentMedia = require('../models/CommentMedia');
@@ -74,14 +76,31 @@ exports.list = async (req, res) => {
             ],
             include: [
                 {
-                  model: User,
-                  as: 'author',
-                  attributes: ['user_fname', 'user_lname'],
+                    model: User,
+                    as: 'author',
+                    attributes: ['user_fname', 'user_lname', 'user_profile_picture'],
                 },
                 {
-                  model: PostMedia,
-                  as: 'media',
-                  attributes: ['id', 'url', 'type', 'thumbnail'],
+                    model: PostMedia,
+                    as: 'media',
+                    attributes: ['id', 'url', 'type', 'thumbnail'],
+                },
+                {
+                    model: Post,
+                    as: 'original_post',
+                    attributes: ['id', 'user_id', 'content'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'author',
+                            attributes: ['user_fname', 'user_lname', 'user_profile_picture'],
+                        },
+                        {
+                            model: PostMedia,
+                            as: 'media',
+                            attributes: ['id', 'url', 'type', 'thumbnail'],
+                        }
+                    ]
                 }
             ]
         });
@@ -137,7 +156,7 @@ exports.getById = async (req, res) => {
                 {
                   model: User,
                   as: 'author',
-                  attributes: ['user_fname', 'user_lname'],
+                  attributes: ['user_fname', 'user_lname', 'user_profile_picture'],
                 },
                 {
                   model: PostMedia,
@@ -246,7 +265,7 @@ exports.create = async (req, res, io) => {
         console.log('Unable to create post: ', error);
         return sendError(res, '', 'Unable to create post');
     }
-}
+};
 
 exports.updateById = async (req, res) => {
     const token = getToken(req.headers);
@@ -342,7 +361,7 @@ exports.updateById = async (req, res) => {
         console.log('Unable to create post: ', error);
         return sendError(res, '', 'Unable to create post');
     }
-}
+};
 
 exports.deleteById = async (req, res) => {
     const token = getToken(req.headers);
@@ -445,14 +464,14 @@ exports.getCommentsByPostId = async (req, res) => {
             offset,
             include: [
                 {
-                  model: User,
-                  as: 'author',
-                  attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
                 },
                 {
-                  model: Comment,
-                  as: 'replies', // Just in case of deeper nesting (optional)
-                  required: false
+                    model: Comment,
+                    as: 'replies', // Just in case of deeper nesting (optional)
+                    required: false
                 },
                 {
                     model: CommentMedia,
@@ -494,8 +513,10 @@ exports.addComment = async (req, res, io) => {
     try {
         uploadMemory.single("file")(req, res, async (err) => {
             const { postId } = req.params;
-            const { content } = req.body;
+            const { content, taggedUserIds } = req.body;
+
             const file = req.file;
+            const taggedUserIdsToArray = taggedUserIds ? taggedUserIds.split(',') : [];
 
             if (!postId || !content) {
                 return sendError(res, '', 'Please provide the required fields (Post ID, Content)');
@@ -541,7 +562,25 @@ exports.addComment = async (req, res, io) => {
                     url: processedFile,
                     type: filetype,
                 });
-            }
+            };
+
+            if (taggedUserIdsToArray.length > 0) {
+                for (const taggedUserId of taggedUserIdsToArray) {
+                    await Tag.create({
+                        user_id: taggedUserId,
+                        post_id: newPost.id
+                    });
+    
+                    await sendNotifiAndEmit ({
+                        sender_id: userId,
+                        recipient_id: taggedUserId,
+                        target_type: 'Tag',
+                        type: 'tag',
+                        message: `${senderName} tagged you in a post`,
+                        io
+                    })
+                }
+            };
 
             io.to(post.user_id).emit('new_comment', newComment);
 
@@ -861,6 +900,136 @@ exports.deleteCommentById = async (req, res, io) => {
     }
 };
 
+exports.shareByPostId = async (req, res, io) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendError(res, '', 'Please login first.');
+    if (!decodedToken) return sendError(res, '', 'Token not valid unable to decode.');
+
+    const userId = decodedToken.user.id;
+    const sharerName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+    
+    try {
+        const { postId } = req.params;
+        const { content, visibility, taggedUserIds } = req.body;
+
+        if (!postId) return sendError(res, '', 'Please provide a post ID.');
+
+        const post = await Post.findOne({
+            where: { id: postId },
+            include: [
+              {
+                model: User,
+                as: 'author',
+                attributes: ['user_fname', 'user_lname', 'user_profile_picture']
+              }
+            ],
+        });
+          
+        if (!post) return sendError(res, '', 'Post not found.');
+
+        await Post.create({
+            content,
+            visibility,
+            original_post_id: post.dataValues.id,
+            user_id: userId,
+        });
+
+        const share = await Share.create({
+            user_id: userId,
+            original_post_id: post.dataValues.id
+        });
+
+        if (taggedUserIds?.length > 0) {
+            for (const taggedUserId of taggedUserIds) {
+                await sendNotifiAndEmit ({
+                    sender_id: userId,
+                    recipient_id: taggedUserId,
+                    target_type: 'Tag',
+                    type: 'tag',
+                    message: `${sharerName} tagged you in a post.`,
+                    io
+                })
+            }
+        }
+
+        await clearPostsCache();
+
+        await sendNotifiAndEmit ({
+            sender_id: userId,
+            recipient_id: post.dataValues.user_id,
+            target_type: 'Share',
+            type: 'Share',
+            message: `${sharerName} shared your post.`,
+            io
+        })
+        
+        return sendSuccess(res, share, 'Post successfully shared.');
+    } catch (error) {
+        console.error('Failed to share post: ', error);
+        return sendError(res, '', 'Failed to share post.');
+    }
+};
+
+exports.reactToPostById = async (req, res, io) => {
+    const token = getToken(req.headers);
+    const decodedToken = decodeToken(token);
+
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+
+    const userId = decodedToken.user.id;
+    const reactorName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+
+    try {
+        const { postId } = req.params;
+        const { type } = req.body;
+
+        if (!postId || !type) return sendError(res, '', 'Please provide the required parameters and fields.');
+
+        const post = await Post.findOne({
+            where: { id: postId },
+            attributes: ['id', 'user_id'],
+            raw: true
+        });
+
+        if (!post) return sendError(res, '', 'Post not found.');
+
+        const newReaction = await Reaction.create({
+            user_id: userId,
+            post_id: postId,
+            type,
+        });
+
+        io.to(post.user_id).emit('new_post_react', newReaction);
+
+        const reactionEmojis = {
+            "heart": "❤️",
+            "haha": "😂",
+            "pray": "🙏",
+            "praise": "🙌",
+            "clap": "👏"
+        };
+
+        const reactionEmoji = reactionEmojis[type] || "";
+
+        await sendNotifiAndEmit({
+            sender_id: userId,
+            recipient_id: post.user_id,
+            target_type: 'Post',
+            type: 'react',
+            message: `${reactorName} reacted ${reactionEmoji} to your post`,
+            io
+        });
+
+        return sendSuccess(res, newReaction, 'React to post success');
+    } catch (error) {
+        console.log('Failed to react to post: ', error);
+        return sendError(res, '', 'Failed to react to post.')
+    }
+}
+
 const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, message, io }) => {
   const newNotif = await Notification.create({
     sender_id,
@@ -899,4 +1068,4 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, m
   } catch (error) {
       console.error('Error sending push notification:', error);
   }
-}
+};

@@ -14,5 +14,7 @@ module.exports = (io) => {
     router.get('/get-replies/:commentId', postController.getRepliesByCommentId);
     router.put('/update-comment/:postId/:commentId', (req, res) => postController.updateComment(req, res, io));
     router.delete('/delete-comment/:commentId', (req, res) => postController.deleteCommentById(req, res, io));
+    router.post('/share/:postId', (req, res) => postController.shareByPostId(req, res, io));
+    router.post('/react/:postId', (req, res) => postController.reactToPostById(req, res, io));
     return router;
 };

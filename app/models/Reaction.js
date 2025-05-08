@@ -33,9 +33,9 @@ Reaction.init({
         onDelete: 'CASCADE',
     },
     type: {
-        type: DataTypes.ENUM('like', 'love', 'haha', 'wow', 'sad', 'angry'),
+        type: DataTypes.ENUM('haha', 'heart', 'pray', 'praise', 'clap'),
         allowNull: false,
-        defaultValue: 'like',
+        defaultValue: 'heart',
     },
     created_at: {
         type: DataTypes.DATE,

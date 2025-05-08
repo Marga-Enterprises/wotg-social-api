@@ -24,11 +24,11 @@ Notification.init({
     allowNull: true,
   },
   target_type: {
-    type: DataTypes.ENUM('Post', 'Comment', 'Tag', 'User', 'Follow', 'Share'),
+    type: DataTypes.ENUM('Post', 'Comment', 'Tag', 'User', 'Follow', 'Share', 'React'),
     allowNull: false,
   },
   type: {
-    type: DataTypes.ENUM('like', 'comment', 'follow', 'mention', 'share', 'tag'),
+    type: DataTypes.ENUM('react', 'comment', 'follow', 'mention', 'share', 'tag'),
     allowNull: false,
   },
   message: {
