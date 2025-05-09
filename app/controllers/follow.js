@@ -15,7 +15,7 @@ const {
 const { Sequelize } = require("sequelize");
 
 const redisClient = require('../../config/redis');
-const { clearFollowingCache, clearFollowersCache } = require('../../utils/clearBlogCache');
+const { clearFollowingCache, clearCommentsCache, clearFollowersCache } = require('../../utils/clearBlogCache');
 
 exports.getFollowersByUserId = async (req, res) => {
   const token = getToken(req.headers);
@@ -248,12 +248,14 @@ const sendNotifiAndEmit = async ({sender_id, recipient_id, target_type, type, me
     message
   });
 
+  await clearCommentsCache(recipient_id);
+
   const notification = await Notification.findOne({
     where: { id: newNotif.dataValues.id },
     raw: true
   });
 
-  io.to(sender_id).emit('new_notification', notification);
+  io.to(recipient_id).emit('new_notification', notification);
 
   const subscription = await Subscription.findOne({
       where: { user_id: recipient_id },
