@@ -272,8 +272,8 @@ exports.clearNotificationsCache = async (userId) => {
     const allPaginatedKeys = await redisClient.keys(pattern);
 
     if (allPaginatedKeys.length > 0) {
-      await redisClient.del(allKeys);
-      console.log(`🗑️ Cleared ${allKeys.length} notifications cache entries.`);
+      await redisClient.del(allPaginatedKeys);
+      console.log(`🗑️ Cleared ${allPaginatedKeys.length} notifications cache entries.`);
     } else {
       console.log("ℹ️ No matching notifications cache keys found.");
     }
