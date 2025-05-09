@@ -24,6 +24,7 @@ const albumRoutes = require("./app/routes/album"); // Music API routes
 const playListRoutes = require("./app/routes/playlist"); // Music API routes
 const followRoutes = require('./app/routes/follow');
 const postRoutes = require('./app/routes/post');
+const notificationRoutes = require('./app/routes/notification');
 
 const Playlist = require('./app/models/Playlist');
 const Music = require('./app/models/Music');
@@ -59,6 +60,7 @@ app.use("/worship", worshipRoutes); // 🔥 Worship API routes
 app.use("/blogs", blogRoutes);
 app.use("/bibles", bibleRoutes);
 app.use("/journals", journalRoutes);
+app.use("/notifications", notificationRoutes); // Notification API routes
 app.use("/music", musicRoutes); // Music API routes
 app.use("/albums", albumRoutes); // Music API routes
 app.use("/playlists", playListRoutes); // Music API routes

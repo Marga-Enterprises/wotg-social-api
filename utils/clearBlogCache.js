@@ -262,3 +262,24 @@ exports.clearRepliesCache = async (commentId) => {
     console.error("❌ Error clearing replies cache:", error);
   }
 };
+
+exports.clearNotificationsCache = async (userId) => {
+  try {
+    console.log("🧹 Clearing notifications cache...");
+
+    const pattern = `notifications_user:${userId ? userId : '*'}_page:*`;
+
+    const allPaginatedKeys = await redisClient.keys(pattern);
+
+    if (allPaginatedKeys.length > 0) {
+      await redisClient.del(allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} notifications cache entries.`);
+    } else {
+      console.log("ℹ️ No matching notifications cache keys found.");
+    }
+
+    console.log("✅ Notifications cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing notifications cache:", error);
+  };
+};

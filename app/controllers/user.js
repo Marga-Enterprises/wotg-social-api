@@ -14,7 +14,7 @@ const {
     removeFileFromSpaces
 } = require("../../utils/methods");
 
-const { clearPostsCache, clearCommentsCache, clearRepliesCache } = require('../../utils/clearBlogCache');
+const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache } = require('../../utils/clearBlogCache');
 
 exports.list = async (req, res) => {
     let token = getToken(req.headers);
@@ -154,6 +154,7 @@ exports.update = async (req, res) => {
             await clearPostsCache();
             await clearCommentsCache();
             await clearRepliesCache();
+            await clearNotificationsCache();
 
             await user.save();
             return sendSuccess(res, user);

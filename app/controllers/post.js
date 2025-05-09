@@ -25,7 +25,7 @@ const uploadMemory = require('./uploadMemory');
 const { uploadFileToSpaces } = require('./spaceUploader');
 
 const redisClient = require('../../config/redis');
-const { clearPostsCache, clearCommentsCache, clearRepliesCache } = require('../../utils/clearBlogCache');
+const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache } = require('../../utils/clearBlogCache');
 
 const { Op, Sequelize } = require('sequelize');
 
@@ -1038,6 +1038,8 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, m
     type,
     message
   });
+
+  await clearCommentsCache(recipient_id);
 
   const notification = await Notification.findOne({
     where: { id: newNotif.dataValues.id },
