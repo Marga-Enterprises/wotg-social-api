@@ -1039,7 +1039,7 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, m
     message
   });
 
-  await clearCommentsCache(recipient_id);
+  await clearNotificationsCache(recipient_id);
 
   const notification = await Notification.findOne({
     where: { id: newNotif.dataValues.id },
