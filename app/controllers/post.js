@@ -62,7 +62,7 @@ exports.list = async (req, res) => {
 
         const { count, rows } = await Post.findAndCountAll({
             where,
-            order: Sequelize.literal('RAND()'),
+            order: [['createdAt', 'DESC']],
             offset,
             limit,
             attributes: [
@@ -73,6 +73,7 @@ exports.list = async (req, res) => {
                 'reaction_count',
                 'comments_count',
                 'shares_count',
+                'createdAt',
             ],
             include: [
                 {
@@ -289,8 +290,6 @@ exports.updateById = async (req, res) => {
             });
 
             if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
-
-
 
             if (filesToDeleteArray.length > 0) {
                 for (const fileToDelete of filesToDeleteArray) {
@@ -594,6 +593,11 @@ exports.addComment = async (req, res, io) => {
             });
 
             await clearCommentsCache();
+
+            await Post.update(
+                { comments_count: Sequelize.literal('comments_count + 1') },
+                { where: { id: postId } }
+            );
 
             return sendSuccess(res, newComment, 'Successfully commented in post.');
         });
@@ -963,7 +967,12 @@ exports.shareByPostId = async (req, res, io) => {
             type: 'Share',
             message: `${sharerName} shared your post.`,
             io
-        })
+        });
+
+        await Post.update(
+            { shares_count: Sequelize.literal('shares_count + 1') },
+            { where: { id: postId } }
+        );
         
         return sendSuccess(res, share, 'Post successfully shared.');
     } catch (error) {
@@ -990,7 +999,7 @@ exports.reactToPostById = async (req, res, io) => {
 
         const post = await Post.findOne({
             where: { id: postId },
-            attributes: ['id', 'user_id'],
+            attributes: ['id', 'user_id', 'reaction_count'],
             raw: true
         });
 
@@ -1022,6 +1031,11 @@ exports.reactToPostById = async (req, res, io) => {
             message: `${reactorName} reacted ${reactionEmoji} to your post`,
             io
         });
+
+        await Post.update(
+            { reaction_count: Sequelize.literal('reaction_count + 1') },
+            { where: { id: postId } }
+        );
 
         return sendSuccess(res, newReaction, 'React to post success');
     } catch (error) {
