@@ -1005,39 +1005,86 @@ exports.reactToPostById = async (req, res, io) => {
 
         if (!post) return sendError(res, '', 'Post not found.');
 
-        const newReaction = await Reaction.create({
-            user_id: userId,
-            post_id: postId,
-            type,
+        // check if reaction already exists
+
+        const existingReaction = await Reaction.findOne({
+            where: {
+                user_id: userId,
+                post_id: postId
+            }
         });
 
-        io.to(post.user_id).emit('new_post_react', newReaction);
+        if (existingReaction) {
+            if (existingReaction.type === type) {
+                await existingReaction.destroy();
+                io.to(post.user_id).emit('delete_post_react', existingReaction);
 
-        const reactionEmojis = {
-            "heart": "❤️",
-            "haha": "😂",
-            "pray": "🙏",
-            "praise": "🙌",
-            "clap": "👏"
-        };
+                await Post.update(
+                    { reaction_count: Sequelize.literal('reaction_count - 1') },
+                    { where: { id: postId } }
+                );
 
-        const reactionEmoji = reactionEmojis[type] || "";
+                return sendSuccess(res, {}, 'Delete react to post success');
+            } else {
+                await existingReaction.update({ type });
+                io.to(post.user_id).emit('update_post_react', existingReaction);
+    
+                const reactionEmojis = {
+                    "heart": "❤️",
+                    "haha": "😂",
+                    "pray": "🙏",
+                    "praise": "🙌",
+                    "clap": "👏"
+                };
+    
+                const reactionEmoji = reactionEmojis[type] || "";
+    
+                await sendNotifiAndEmit({
+                    sender_id: userId,
+                    recipient_id: post.user_id,
+                    target_type: 'Post',
+                    type: 'react',
+                    message: `${reactorName} reacted ${reactionEmoji} to your post`,
+                    io
+                });
+    
+                return sendSuccess(res, existingReaction, 'Update react to post success');
+            }
+        } else {
+            const newReaction = await Reaction.create({
+                user_id: userId,
+                post_id: postId,
+                type
+            });
 
-        await sendNotifiAndEmit({
-            sender_id: userId,
-            recipient_id: post.user_id,
-            target_type: 'Post',
-            type: 'react',
-            message: `${reactorName} reacted ${reactionEmoji} to your post`,
-            io
-        });
+            io.to(post.user_id).emit('new_post_react', newReaction);
 
-        await Post.update(
-            { reaction_count: Sequelize.literal('reaction_count + 1') },
-            { where: { id: postId } }
-        );
+            const reactionEmojis = {
+                "heart": "❤️",
+                "haha": "😂",
+                "pray": "🙏",
+                "praise": "🙌",
+                "clap": "👏"
+            };
 
-        return sendSuccess(res, newReaction, 'React to post success');
+            const reactionEmoji = reactionEmojis[type] || "";
+
+            await sendNotifiAndEmit({
+                sender_id: userId,
+                recipient_id: post.user_id,
+                target_type: 'Post',
+                type: 'react',
+                message: `${reactorName} reacted ${reactionEmoji} to your post`,
+                io
+            });
+
+            await Post.update(
+                { reaction_count: Sequelize.literal('reaction_count + 1') },
+                { where: { id: postId } }
+            );
+
+            return sendSuccess(res, newReaction, 'React to post success');
+        }
     } catch (error) {
         console.log('Failed to react to post: ', error);
         return sendError(res, '', 'Failed to react to post.')
