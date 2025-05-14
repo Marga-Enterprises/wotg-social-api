@@ -11,6 +11,12 @@ const s3 = new AWS.S3({
 const uploadFileToSpaces = async (file) => {
   const timestamp = Date.now();
   const originalName = file.originalname;
+
+  const sanitizedOriginalName = originalName
+        .replace(/[, ]+/g, '_')       // Replace spaces and commas with underscores
+        .replace(/[^a-zA-Z0-9._-]/g, '') // Optionally remove weird special characters
+        .replace(/__+/g, '_'); // Replace multiple underscores with a single one
+
   const mimeType = file.mimetype;
   const branch = process.env.NODE_ENV === 'development' ? 'development' : 'production';
 
@@ -28,7 +34,7 @@ const uploadFileToSpaces = async (file) => {
   }
 
   const newFileName = `${timestamp}-${branch}-${originalName}`;
-  const fullPath = `${folder}/${timestamp}-${branch}-${originalName}`;
+  const fullPath = `${folder}/${timestamp}-${branch}-${sanitizedOriginalName}`;
 
   const params = {
     Bucket: process.env.DO_SPACES_BUCKET,

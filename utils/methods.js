@@ -204,8 +204,12 @@ exports.processImageToSpace = async (file) => {
       .toBuffer();
 
     // Generate a new filename with the original name but with a "_converted" suffix and .webp extension
-    const baseName = file.originalname.split('.')[0];  // Get the original file name without extension
-    const newFileName = `${baseName}_converted.webp`;   // Add "_converted" suffix and change extension to .webp
+    const originalName = file.originalname;
+    const sanitizedOriginalName = originalName
+          .replace(/[, ]+/g, '_')       // Replace spaces and commas with underscores
+          .replace(/[^a-zA-Z0-9._-]/g, '') // Optionally remove weird special characters
+          .replace(/__+/g, '_'); // Replace multiple underscores with a single one
+    const newFileName = `${sanitizedOriginalName}_converted.webp`;   // Add "_converted" suffix and change extension to .webp
 
     const convertedFile = {
       fieldname: file.fieldname,        // Same fieldname as the original
