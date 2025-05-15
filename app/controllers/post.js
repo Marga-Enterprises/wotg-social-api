@@ -1031,7 +1031,11 @@ exports.reactToPostById = async (req, res, io) => {
                     }
                 });
 
-                io.to(post.user_id).emit('delete_post_react', existingReaction);
+                if (post.user_id === userId) {
+                    io.to(post.user_id).emit('delete_post_react', existingReaction);
+                } else {
+                    io.to(post.user_id).to(userId).emit('delete_post_react', existingReaction);
+                }
 
                 await Post.update(
                     { reaction_count: Sequelize.literal('reaction_count - 1') },
@@ -1052,8 +1056,11 @@ exports.reactToPostById = async (req, res, io) => {
                     { where: { id: reaction.id } }
                 );
 
-                io.to(post.user_id).emit('update_post_react', reaction);
-                io.to(userId).emit('update_post_react', reaction);
+                if (post.user_id === userId) {
+                    io.to(post.user_id).emit('update_post_react', reaction);
+                } else {
+                    io.to(post.user_id).to(userId).emit('update_post_react', reaction);
+                }
 
                 return sendSuccess(res, reaction, 'Post reaction updated.');
             }
@@ -1063,8 +1070,12 @@ exports.reactToPostById = async (req, res, io) => {
                 post_id: postId,
                 type,
             });
-    
-            io.to(post.user_id).emit('new_post_react', newReaction);
+
+            if (post.user_id === userId) {
+                io.to(post.user_id).emit('new_post_react', newReaction);
+            } else {
+                io.to(post.user_id).to(userId).emit('new_post_react', newReaction);
+            }
     
             const reactionEmojis = {
                 "heart": "❤️",
@@ -1099,6 +1110,8 @@ exports.reactToPostById = async (req, res, io) => {
 }
 
 const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, message, io }) => {
+  if (sender_id === recipient_id) return;
+
   const newNotif = await Notification.create({
     sender_id,
     recipient_id,
