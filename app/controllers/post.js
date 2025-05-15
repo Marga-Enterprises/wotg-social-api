@@ -90,6 +90,13 @@ exports.list = async (req, res) => {
                     model: Reaction,
                     as: 'reactions',
                     attributes: ['id', 'user_id', 'post_id', 'type'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'reactor',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        }
+                    ]
                 },
                 {
                     model: Post,
@@ -168,6 +175,13 @@ exports.getById = async (req, res) => {
                     model: Reaction,
                     as: 'reactions',
                     attributes: ['id', 'user_id', 'post_id', 'type'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'reactor',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        }
+                    ]
                 },
                 {
                   model: PostMedia,
