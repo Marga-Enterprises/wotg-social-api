@@ -33,7 +33,7 @@ const uploadFileToSpaces = async (file) => {
     folder = 'others';
   }
 
-  const newFileName = `${timestamp}-${branch}-${originalName}`;
+  const newFileName = `${timestamp}-${branch}-${sanitizedOriginalName}`;
   const fullPath = `${folder}/${timestamp}-${branch}-${sanitizedOriginalName}`;
 
   const params = {
