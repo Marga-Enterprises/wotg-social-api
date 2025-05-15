@@ -87,6 +87,11 @@ exports.list = async (req, res) => {
                     attributes: ['id', 'url', 'type', 'thumbnail'],
                 },
                 {
+                    model: Reaction,
+                    as: 'reactions',
+                    attributes: ['id', 'user_id', 'post_id', 'type'],
+                },
+                {
                     model: Post,
                     as: 'original_post',
                     attributes: ['id', 'user_id', 'content'],
@@ -158,6 +163,11 @@ exports.getById = async (req, res) => {
                   model: User,
                   as: 'author',
                   attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                },
+                {
+                    model: Reaction,
+                    as: 'reactions',
+                    attributes: ['id', 'user_id', 'post_id', 'type'],
                 },
                 {
                   model: PostMedia,
@@ -1030,14 +1040,22 @@ exports.reactToPostById = async (req, res, io) => {
 
                 return sendSuccess(res, {}, 'Post reaction removed.');
             } else if (existingReaction.type !== type) {
-                await Reaction.update(
+                const reaction = await Reaction.findOne({
+                    where: {
+                        user_id: userId,
+                        post_id: postId
+                    }
+                });
+
+                await reaction.update(
                     { type },
-                    { where: { user_id: userId, post_id: postId } }
+                    { where: { id: reaction.id } }
                 );
 
-                io.to(post.user_id).emit('update_post_react', existingReaction);
+                io.to(post.user_id).emit('update_post_react', reaction);
+                io.to(userId).emit('update_post_react', reaction);
 
-                return sendSuccess(res, {}, 'Post reaction updated.');
+                return sendSuccess(res, reaction, 'Post reaction updated.');
             }
         } else {
             const newReaction = await Reaction.create({
