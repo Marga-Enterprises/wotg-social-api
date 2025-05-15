@@ -1062,7 +1062,14 @@ exports.reactToPostById = async (req, res, io) => {
                     where: {
                         user_id: userId,
                         post_id: postId
-                    }
+                    },
+                    include: [
+                        {
+                            model: User,
+                            as: 'reactor',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        }
+                    ]
                 });
 
                 await reaction.update(
@@ -1084,11 +1091,22 @@ exports.reactToPostById = async (req, res, io) => {
                 post_id: postId,
                 type,
             });
-
+            
+            // Fetch with associated user
+            const populatedReaction = await Reaction.findByPk(newReaction.id, {
+                include: [
+                    {
+                    model: User,
+                    as: 'reactor',
+                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                    },
+                ],
+            });
+              
             if (post.user_id === userId) {
-                io.to(post.user_id).emit('new_post_react', newReaction);
+                io.to(post.user_id).emit('new_post_react', populatedReaction);
             } else {
-                io.to(post.user_id).to(userId).emit('new_post_react', newReaction);
+                io.to(post.user_id).to(userId).emit('new_post_react', populatedReaction);
             }
     
             const reactionEmojis = {
@@ -1115,7 +1133,7 @@ exports.reactToPostById = async (req, res, io) => {
                 { where: { id: postId } }
             );
     
-            return sendSuccess(res, newReaction, 'React to post success');
+            return sendSuccess(res, populatedReaction, 'React to post success');
         }
     } catch (error) {
         console.log('Failed to react to post: ', error);
