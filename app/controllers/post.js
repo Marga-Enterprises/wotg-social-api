@@ -482,7 +482,7 @@ exports.getCommentsByPostId = async (req, res) => {
 
         const { count, rows } = await Comment.findAndCountAll({
             where,
-            order: [['createdAt', 'DESC']],
+            order: [['createdAt', 'ASC']],
             limit,
             offset,
             include: [
@@ -605,7 +605,27 @@ exports.addComment = async (req, res, io) => {
                 }
             };
 
-            io.to(post.user_id).emit('new_comment', newComment);
+            const populatedComment = await Comment.findOne({
+                where: { id: newComment.id },
+                include: [
+                    {
+                        model: User,
+                        as: 'author',
+                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                    },
+                    {
+                        model: CommentMedia,
+                        as: 'media',
+                        attributes: ['url', 'type']
+                    }
+                ]
+            })
+
+            if (post.user_id === userId) {
+                io.to(post.user_id).emit('new_comment', populatedComment);
+            } else {
+                io.to(post.user_id).to(userId).emit('new_comment', populatedComment);
+            }
 
             await sendNotifiAndEmit({
                 sender_id: userId,
@@ -623,7 +643,7 @@ exports.addComment = async (req, res, io) => {
                 { where: { id: postId } }
             );
 
-            return sendSuccess(res, newComment, 'Successfully commented in post.');
+            return sendSuccess(res, populatedComment, 'Successfully commented in post.');
         });
     } catch (error) {
         console.error('Unable to add comment for this post.');
