@@ -1,5 +1,8 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Post = require('../models/Post');
+const PostMedia = require('../models/PostMedia');
+const Reaction = require('../models/Reaction');
 
 const { Op, Sequelize } = require('sequelize');
 const { 
@@ -51,6 +54,61 @@ exports.list = async (req, res) => {
                     as: 'sender',
                     attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
                 },
+                {
+                    model: Post,
+                    as: 'targetPost',
+                    attributes: [
+                        'id',
+                        'user_id',
+                        'content',
+                        'visibility',
+                        'reaction_count',
+                        'comments_count',
+                        'shares_count',
+                        'createdAt',
+                    ],
+                    include: [
+                        {
+                            model: User,
+                            as: 'author',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        },
+                        {
+                            model: PostMedia,
+                            as: 'media',
+                            attributes: ['id', 'url', 'type', 'thumbnail'],
+                        },
+                        {
+                            model: Reaction,
+                            as: 'reactions',
+                            attributes: ['id', 'user_id', 'post_id', 'type'],
+                            include: [
+                                {
+                                    model: User,
+                                    as: 'reactor',
+                                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                                }
+                            ]
+                        },
+                        {
+                            model: Post,
+                            as: 'original_post',
+                            attributes: ['id', 'user_id', 'content'],
+                            include: [
+                                {
+                                    model: User,
+                                    as: 'author',
+                                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                                },
+                                {
+                                    model: PostMedia,
+                                    as: 'media',
+                                    attributes: ['id', 'url', 'type', 'thumbnail'],
+                                }
+                            ]
+                        }
+                    ]
+                }
             ],
             order: [['created_at', 'DESC']],
             limit,

@@ -275,6 +275,7 @@ exports.create = async (req, res, io) => {
                         sender_id: userId,
                         recipient_id: taggedUserId,
                         target_type: 'Tag',
+                        target_id: newPost.id,
                         type: 'tag',
                         message: `${senderName} tagged you in a post`,
                         io
@@ -546,7 +547,21 @@ exports.addComment = async (req, res, io) => {
             }
 
             const post = await Post.findOne({
-                where: { id: postId }
+                where: { id: postId },
+                include: [
+                    {
+                        model: Comment,
+                        as: 'comments',
+                        attributes: ['id', 'content', 'createdAt'],
+                        include: [
+                            {
+                                model: User,
+                                as: 'author',
+                                attributes: ['id']
+                            },
+                        ]
+                    }
+                ]
             });
 
             if (!post) return sendError(res, '', 'Post not found.');
@@ -598,6 +613,7 @@ exports.addComment = async (req, res, io) => {
                         sender_id: userId,
                         recipient_id: taggedUserId,
                         target_type: 'Tag',
+                        target_id: postId,
                         type: 'tag',
                         message: `${senderName} tagged you in a post`,
                         io
@@ -627,11 +643,32 @@ exports.addComment = async (req, res, io) => {
                 io.to(post.user_id).to(userId).emit('new_comment', populatedComment);
             }
 
+            // get all the user ids who commented on that post
+            const commenters = [...new Set(post.comments.map(comment => comment.author.id))];
+
+            // filter out the post owner from the commenters
+            const filteredCommenters = commenters.filter(commenterId => commenterId !== post.user_id);
+
+            if (filteredCommenters.length > 0) {
+                for (const commenterId of filteredCommenters) {
+                    await sendNotifiAndEmit({
+                        sender_id: userId,
+                        recipient_id: commenterId,
+                        target_type: 'Comment',
+                        type: 'comment',
+                        target_id: postId,
+                        message: `${followerName} commented on a post you commented on`,
+                        io
+                    });
+                }
+            };
+            
             await sendNotifiAndEmit({
                 sender_id: userId,
                 recipient_id: post.user_id,
                 target_type: 'Comment',
                 type: 'comment',
+                target_id: postId,
                 message: `${followerName} commented on your post`,
                 io
             });
@@ -792,6 +829,7 @@ exports.addReplyToComment = async (req, res, io) => {
         sender_id: userId,
         recipient_id: parentComment.user_id,
         target_type: 'Comment',
+        target_id: postId,
         type: 'comment',
         message: `${replierName} replied to your comment`,
         io
@@ -995,6 +1033,7 @@ exports.shareByPostId = async (req, res, io) => {
                     sender_id: userId,
                     recipient_id: taggedUserId,
                     target_type: 'Tag',
+                    target_id: postId,
                     type: 'tag',
                     message: `${sharerName} tagged you in a post.`,
                     io
@@ -1008,6 +1047,7 @@ exports.shareByPostId = async (req, res, io) => {
             sender_id: userId,
             recipient_id: post.dataValues.user_id,
             target_type: 'Share',
+            target_id: postId,
             type: 'Share',
             message: `${sharerName} shared your post.`,
             io
@@ -1143,6 +1183,7 @@ exports.reactToPostById = async (req, res, io) => {
                 sender_id: userId,
                 recipient_id: post.user_id,
                 target_type: 'Post',
+                target_id: postId,
                 type: 'react',
                 message: `${reactorName} reacted ${reactionEmoji} to your post`,
                 io
@@ -1161,13 +1202,14 @@ exports.reactToPostById = async (req, res, io) => {
     }
 }
 
-const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, message, io }) => {
+const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_id, type, message, io }) => {
   if (sender_id === recipient_id) return;
 
   const newNotif = await Notification.create({
     sender_id,
     recipient_id,
     target_type,
+    target_id,
     type,
     message
   });
@@ -1176,7 +1218,13 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, type, m
 
   const notification = await Notification.findOne({
     where: { id: newNotif.dataValues.id },
-    raw: true
+    include: [
+        {
+            model: User,
+            as: 'sender',
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+        },
+    ],
   });
 
   io.to(recipient_id).emit('new_notification', notification);

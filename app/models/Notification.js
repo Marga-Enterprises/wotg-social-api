@@ -1,6 +1,7 @@
 const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../../config/db');
 const User = require('./User');
+const Post = require('./Post');
 
 class Notification extends Model {}
 
@@ -54,5 +55,7 @@ Notification.init({
 
 Notification.belongsTo(User, { foreignKey: 'recipient_id', as: 'recipient' });
 Notification.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
+
+Notification.belongsTo(Post, { foreignKey: 'target_id', as: 'targetPost' });
 
 module.exports = Notification;
