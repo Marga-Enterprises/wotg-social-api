@@ -1228,6 +1228,72 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_
             as: 'sender',
             attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
         },
+        {
+            model: Post,
+            as: 'targetPost',
+            attributes: [
+                'id',
+                'user_id',
+                'content',
+                'visibility',
+                'reaction_count',
+                'comments_count',
+                'shares_count',
+                'createdAt',
+            ],
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                },
+                {
+                    model: PostMedia,
+                    as: 'media',
+                    attributes: ['id', 'url', 'type', 'thumbnail'],
+                },
+                {
+                    model: Reaction,
+                    as: 'reactions',
+                    attributes: ['id', 'user_id', 'post_id', 'type'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'reactor',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        }
+                    ]
+                },
+                {
+                    model: Post,
+                    as: 'original_post',
+                    attributes: ['id', 'user_id', 'content'],
+                    include: [
+                        {
+                            model: User,
+                            as: 'author',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                        },
+                        {
+                            model: PostMedia,
+                            as: 'media',
+                            attributes: ['id', 'url', 'type', 'thumbnail'],
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            model: Comment,
+            as: 'targetComment',
+            include: [
+                {
+                    model: User,
+                    as: 'author',
+                    attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                }
+            ]
+        }
     ],
   });
 
