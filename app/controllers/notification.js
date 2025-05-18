@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Post = require('../models/Post');
 const PostMedia = require('../models/PostMedia');
 const Reaction = require('../models/Reaction');
+const Comment = require('../models/Comment');
 
 const { Op, Sequelize } = require('sequelize');
 const { 
@@ -106,6 +107,17 @@ exports.list = async (req, res) => {
                                     attributes: ['id', 'url', 'type', 'thumbnail'],
                                 }
                             ]
+                        }
+                    ]
+                },
+                {
+                    model: Comment,
+                    as: 'targetComment',
+                    include: [
+                        {
+                            model: User,
+                            as: 'author',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
                         }
                     ]
                 }

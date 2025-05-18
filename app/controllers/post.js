@@ -613,6 +613,7 @@ exports.addComment = async (req, res, io) => {
                         sender_id: userId,
                         recipient_id: taggedUserId,
                         target_type: 'Tag',
+                        sub_target_id: newComment.id,
                         target_id: postId,
                         type: 'tag',
                         message: `${senderName} tagged you in a post`,
@@ -655,6 +656,7 @@ exports.addComment = async (req, res, io) => {
                         sender_id: userId,
                         recipient_id: commenterId,
                         target_type: 'Comment',
+                        sub_target_id: newComment.id,
                         type: 'comment',
                         target_id: postId,
                         message: `${followerName} commented on a post you commented on`,
@@ -668,6 +670,7 @@ exports.addComment = async (req, res, io) => {
                 recipient_id: post.user_id,
                 target_type: 'Comment',
                 type: 'comment',
+                sub_target_id: newComment.id,
                 target_id: postId,
                 message: `${followerName} commented on your post`,
                 io
@@ -1202,12 +1205,13 @@ exports.reactToPostById = async (req, res, io) => {
     }
 }
 
-const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_id, type, message, io }) => {
+const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_id, sub_target_id, type, message, io }) => {
   if (sender_id === recipient_id) return;
 
   const newNotif = await Notification.create({
     sender_id,
     recipient_id,
+    sub_target_id,
     target_type,
     target_id,
     type,

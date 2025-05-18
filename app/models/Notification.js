@@ -2,6 +2,7 @@ const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../../config/db');
 const User = require('./User');
 const Post = require('./Post');
+const Comment = require('./Comment');
 
 class Notification extends Model {}
 
@@ -21,6 +22,10 @@ Notification.init({
     allowNull: true,
   },
   target_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  sub_target_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
@@ -57,5 +62,6 @@ Notification.belongsTo(User, { foreignKey: 'recipient_id', as: 'recipient' });
 Notification.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
 
 Notification.belongsTo(Post, { foreignKey: 'target_id', as: 'targetPost' });
+Notification.belongsTo(Comment, { foreignKey: 'sub_target_id', as: 'targetComment' });
 
 module.exports = Notification;
