@@ -167,12 +167,12 @@ exports.processVideoToSpace = (file) => {
         '-vsync 0'
       ])
       .on('error', (err) => {
-        console.error('FFmpeg video conversion failed:', err);
+        console.error('[[[[[[[[[[[[[[[[[[[[[FFmpeg video conversion failed:]]]]]]]]]]]]]]]]]]]]]', err);
         reject(err);
       })
       .on('end', () => {
         const outputBuffer = Buffer.concat(outputChunks);
-        console.log('Video compressed and converted to webm (in-memory).');
+        console.log('[[[[[[[[[[[[[[[[[[[[[[[[Video compressed and converted to webm (in-memory).]]]]]]]]]]]]]]]]]]]]]]]]');
         resolve({
           buffer: outputBuffer,
           mimetype: 'video/webm',

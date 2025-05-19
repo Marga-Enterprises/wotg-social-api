@@ -239,8 +239,8 @@ exports.create = async (req, res, io) => {
                             processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
                             filetype = 'image';
                         } else if (mimetype.startsWith('video/')) {
-                            convertedFile = await processVideoToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
+                            // convertedFile = await processVideoToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(file); // Ensure async upload
                             filetype = 'video';
                         } else if (mimetype.startsWith('audio/')) {
                             processedFile = await uploadFileToSpaces(file); // Only upload for audio
@@ -479,7 +479,7 @@ exports.getCommentsByPostId = async (req, res) => {
 
         let where = {}
 
-        where[Op.or] = [{ post_id: postId }];
+        where[Op.and] = [{ post_id: postId, level: 0 }];
 
         const { count, rows } = await Comment.findAndCountAll({
             where,
@@ -721,7 +721,9 @@ exports.getRepliesByCommentId = async (req, res) => {
       return sendSuccess(res, JSON.parse(cached), 'From cache');
     }
 
-    const where = { parent_comment_id: commentId };
+    let where = {}
+
+    where[Op.and] = [{ parent_comment_id: commentId, level: 1 }];
 
     const { count, rows } = await Comment.findAndCountAll({
       where,
@@ -737,7 +739,14 @@ exports.getRepliesByCommentId = async (req, res) => {
         {
           model: Comment,
           as: 'replies', // Just in case of deeper nesting (optional)
-          required: false
+          required: false,
+          include: [
+            {
+                model: User,
+                as: 'author',
+                attributes: ['id, user_fname', 'user_lname', 'user_profile_picture']
+            },
+          ]
         },
         {
             model: CommentMedia,
@@ -779,14 +788,33 @@ exports.addReplyToComment = async (req, res, io) => {
   try {
     uploadMemory.single("file")(req, res, async (err) => {
       const { postId, commentId } = req.params;
-      const { content } = req.body;
+      const { content, taggedUserIds } = req.body;
       const file = req.file;
+
+      const taggedUserIdsToArray = taggedUserIds ? taggedUserIds.split(',') : [];
 
       if (!postId || !commentId || !content) {
         return sendError(res, '', 'Missing required fields (Post ID, Parent Comment ID, Content)');
       }
 
-      const parentComment = await Comment.findOne({ where: { id: commentId } });
+      const parentComment = await Comment.findOne({ 
+        where: { id: commentId },
+        include: [
+            {
+                model: Comment,
+                as: 'replies',
+                attributes: ['id', 'content', 'createdAt'],
+                include: [
+                    {
+                        model: User,
+                        as: 'author',
+                        attributes: ['id']
+                    },
+                ]
+            }
+        ] 
+      });
+
       if (!parentComment) return sendError(res, '', 'Parent comment not found.');
 
       const newReply = await Comment.create({
@@ -826,18 +854,80 @@ exports.addReplyToComment = async (req, res, io) => {
         });
       }
 
-      io.to(parentComment.user_id).emit('new_reply', newReply);
+      if (taggedUserIdsToArray.length > 0) {
+        for (const taggedUserId of taggedUserIdsToArray) {
+            await Tag.create({
+                user_id: taggedUserId,
+                post_id: postId
+            });
 
+            await sendNotifiAndEmit ({
+                sender_id: userId,
+                recipient_id: taggedUserId,
+                target_type: 'Tag',
+                sub_target_id: newReply.id,
+                target_id: postId,
+                type: 'tag',
+                message: `${replierName} mentioned you in a comment`,
+                io
+            })
+        }
+      };
+
+      const populatedReply = await Comment.findOne({
+        where: { id: parentComment.id },
+        include: [
+            {
+                model: User,
+                as: 'author',
+                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+            },
+            {
+                model: CommentMedia,
+                as: 'media',
+                attributes: ['url', 'type']
+            }
+        ]
+      })
+
+      if (parentComment.user_id === userId) {
+         io.to(parentComment.user_id).emit('new_comment', populatedReply);
+      } else {
+        io.to(parentComment.user_id).to(userId).emit('new_comment', populatedReply);
+      }
+
+      // get all the user ids who repkied to that comment
+      const commenters = [...new Set(parentComment.replies.map(reply => reply.author.id))];
+
+      // filter out the post owner from the commenters
+      const filteredCommenters = commenters.filter(commenterId => commenterId !== parentComment.user_id);
+
+      if (filteredCommenters.length > 0) {
+        for (const commenterId of filteredCommenters) {
+            await sendNotifiAndEmit({
+                sender_id: userId,
+                recipient_id: commenterId,
+                target_type: 'Comment',
+                sub_target_id: newReply.id,
+                type: 'comment',
+                target_id: postId,
+                message: `${replierName} replied to a comment you replied to`,
+                io
+            });
+        }
+      };
+        
       await sendNotifiAndEmit({
         sender_id: userId,
         recipient_id: parentComment.user_id,
         target_type: 'Comment',
-        target_id: postId,
         type: 'comment',
+        sub_target_id: newReply.id,
+        target_id: postId,
         message: `${replierName} replied to your comment`,
         io
       });
-
+      
       await clearRepliesCache(commentId);
 
       return sendSuccess(res, newReply, 'Reply added successfully.');
