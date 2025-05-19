@@ -27,7 +27,7 @@ const { uploadFileToSpaces } = require('./spaceUploader');
 const redisClient = require('../../config/redis');
 const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache } = require('../../utils/clearBlogCache');
 
-const { Op, Sequelize } = require('sequelize');
+const { Op, Sequelize, where } = require('sequelize');
 
 exports.list = async (req, res) => {
     const token = getToken(req.headers);
@@ -916,6 +916,11 @@ exports.addReplyToComment = async (req, res, io) => {
             });
         }
       };
+
+      // update the parent comment's reply count
+      await parentComment.update({
+        reply_count: Sequelize.literal('reply_count + 1')
+      });
         
       await sendNotifiAndEmit({
         sender_id: userId,
