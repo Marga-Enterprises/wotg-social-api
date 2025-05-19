@@ -934,6 +934,7 @@ exports.addReplyToComment = async (req, res, io) => {
       });
       
       await clearRepliesCache(commentId);
+      await clearCommentsCache(commentId);
 
       return sendSuccess(res, newReply, 'Reply added successfully.');
     });
