@@ -891,9 +891,9 @@ exports.addReplyToComment = async (req, res, io) => {
       })
 
       if (parentComment.user_id === userId) {
-         io.to(parentComment.user_id).emit('new_comment', populatedReply);
+         io.to(parentComment.user_id).emit('new_reply', populatedReply);
       } else {
-        io.to(parentComment.user_id).to(userId).emit('new_comment', populatedReply);
+        io.to(parentComment.user_id).to(userId).emit('new_reply', populatedReply);
       }
 
       // get all the user ids who repkied to that comment
