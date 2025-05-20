@@ -890,10 +890,10 @@ exports.addReplyToComment = async (req, res, io) => {
         ]
       })
 
-      if (parentComment.user_id === userId) {
-         io.to(parentComment.user_id).emit('new_reply', populatedReply);
+      if (populatedReply.user_id === userId) {
+         io.to(populatedReply.user_id).emit('new_reply', populatedReply);
       } else {
-        io.to(parentComment.user_id).to(userId).emit('new_reply', populatedReply);
+        io.to(populatedReply.user_id).to(userId).emit('new_reply', populatedReply);
       }
 
       // get all the user ids who repkied to that comment
@@ -921,18 +921,20 @@ exports.addReplyToComment = async (req, res, io) => {
       await parentComment.update({
         reply_count: Sequelize.literal('reply_count + 1')
       });
+
+      if (parentComment.user_id !== userId) {
+        await sendNotifiAndEmit({
+            sender_id: userId,
+            recipient_id: parentComment.user_id,
+            target_type: 'Comment',
+            type: 'comment',
+            sub_target_id: populatedReply.id,
+            target_id: postId,
+            message: `${replierName} replied to your comment`,
+            io
+          });    
+      }
         
-      await sendNotifiAndEmit({
-        sender_id: userId,
-        recipient_id: parentComment.user_id,
-        target_type: 'Comment',
-        type: 'comment',
-        sub_target_id: populatedReply.id,
-        target_id: postId,
-        message: `${replierName} replied to your comment`,
-        io
-      });
-      
       await clearRepliesCache(commentId);
       await clearCommentsCache(commentId);
 
