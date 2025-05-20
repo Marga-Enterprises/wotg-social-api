@@ -927,7 +927,7 @@ exports.addReplyToComment = async (req, res, io) => {
         recipient_id: parentComment.user_id,
         target_type: 'Comment',
         type: 'comment',
-        sub_target_id: newReply.id,
+        sub_target_id: populatedReply.id,
         target_id: postId,
         message: `${replierName} replied to your comment`,
         io
@@ -936,7 +936,7 @@ exports.addReplyToComment = async (req, res, io) => {
       await clearRepliesCache(commentId);
       await clearCommentsCache(commentId);
 
-      return sendSuccess(res, newReply, 'Reply added successfully.');
+      return sendSuccess(res, populatedReply, 'Reply added successfully.');
     });
   } catch (error) {
     console.error('Unable to add reply to comment.', error);
