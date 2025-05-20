@@ -736,7 +736,7 @@ exports.getRepliesByCommentId = async (req, res) => {
           as: 'author',
           attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
         },
-        {
+        /*{
           model: Comment,
           as: 'replies', // Just in case of deeper nesting (optional)
           required: false,
@@ -747,7 +747,7 @@ exports.getRepliesByCommentId = async (req, res) => {
                 attributes: ['id, user_fname', 'user_lname', 'user_profile_picture']
             },
           ]
-        },
+        },*/
         {
             model: CommentMedia,
             as: 'media', // Just in case of deeper nesting (optional)
@@ -875,7 +875,7 @@ exports.addReplyToComment = async (req, res, io) => {
       };
 
       const populatedReply = await Comment.findOne({
-        where: { id: parentComment.id },
+        where: { id: newReply.id },
         include: [
             {
                 model: User,
