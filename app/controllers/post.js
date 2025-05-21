@@ -239,8 +239,8 @@ exports.create = async (req, res, io) => {
                             processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
                             filetype = 'image';
                         } else if (mimetype.startsWith('video/')) {
-                            // convertedFile = await processVideoToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(file); // Ensure async upload
+                            convertedFile = await processVideoToSpace(file); // Ensure async processing
+                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
                             filetype = 'video';
                         } else if (mimetype.startsWith('audio/')) {
                             processedFile = await uploadFileToSpaces(file); // Only upload for audio

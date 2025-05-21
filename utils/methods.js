@@ -167,12 +167,10 @@ exports.processVideoToSpace = (file) => {
         '-vsync 0'
       ])
       .on('error', (err) => {
-        console.error('[[[[[[[[[[[[[[[[[[[[[FFmpeg video conversion failed:]]]]]]]]]]]]]]]]]]]]]', err);
         reject(err);
       })
       .on('end', () => {
         const outputBuffer = Buffer.concat(outputChunks);
-        console.log('[[[[[[[[[[[[[[[[[[[[[[[[Video compressed and converted to webm (in-memory).]]]]]]]]]]]]]]]]]]]]]]]]');
         resolve({
           buffer: outputBuffer,
           mimetype: 'video/webm',
@@ -190,43 +188,36 @@ exports.processVideoToSpace = (file) => {
 
 // Function to process the image and return the new filename after converting to WebP
 exports.processImageToSpace = async (file) => {
-  // Check if the file and its properties exist
   if (!file || !file.buffer || !file.originalname) {
     throw new Error('Invalid file object: missing buffer or originalname');
   }
 
-  const fileBuffer = file.buffer; // Image file buffer passed to the function
-
   try {
-    // Process the image with Sharp to convert it to WebP
-    const webpBuffer = await sharp(fileBuffer)
-      .webp()  // Converts the image to WebP format
+    const webpBuffer = await sharp(file.buffer)
+      .rotate()  // ✅ Auto-rotate based on EXIF
+      .webp()
       .toBuffer();
 
-    // Generate a new filename with the original name but with a "_converted" suffix and .webp extension
-    const originalName = file.originalname;
-    const sanitizedOriginalName = originalName
-          .replace(/[, ]+/g, '_')       // Replace spaces and commas with underscores
-          .replace(/[^a-zA-Z0-9._-]/g, '') // Optionally remove weird special characters
-          .replace(/__+/g, '_'); // Replace multiple underscores with a single one
-    const newFileName = `${sanitizedOriginalName}_converted.webp`;   // Add "_converted" suffix and change extension to .webp
+    const sanitizedOriginalName = file.originalname
+      .replace(/[, ]+/g, '_')
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+      .replace(/__+/g, '_');
 
-    const convertedFile = {
-      fieldname: file.fieldname,        // Same fieldname as the original
-      originalname: newFileName,        // New WebP filename
-      encoding: '7bit',                 // You can specify encoding or leave as is
-      mimetype: 'image/webp',           // New MIME type for WebP images
-      size: webpBuffer.length,          // The size of the WebP image buffer
-      buffer: webpBuffer,    
-    }
+    const newFileName = `${sanitizedOriginalName}_converted.webp`;
 
-    return convertedFile;
+    return {
+      fieldname: file.fieldname,
+      originalname: newFileName,
+      encoding: '7bit',
+      mimetype: 'image/webp',
+      size: webpBuffer.length,
+      buffer: webpBuffer,
+    };
   } catch (error) {
     console.error('Error processing image:', error);
-    throw error;  // Throwing the error to be handled by the caller
+    throw error;
   }
 };
-
 
 exports.removeFileFromSpaces = async (folder, key) => {
   try {
