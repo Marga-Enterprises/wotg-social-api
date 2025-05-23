@@ -329,7 +329,6 @@ exports.updateById = async (req, res) => {
   }
 };
 
-
 exports.deleteById = async (req, res) => {
     const token = getToken(req.headers);
     const decodedToken = decodeToken(token);
@@ -1352,6 +1351,8 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_
   try {
       const fcmToken = subscriptionSub?.fcmToken; // Access safely
       
+      console.log('[[[[[[[[[[[[[[[[[[[[[[[[[FCM TOKEN:]]]]]]]]]]]]]]]]]]]]]]]]]', fcmToken);
+
       if (fcmToken) {
           await sendNotification(
               fcmToken,
