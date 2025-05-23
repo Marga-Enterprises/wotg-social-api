@@ -1351,6 +1351,7 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_
   try {
       const fcmToken = subscriptionSub?.fcmToken; // Access safely
       
+      console.log('[[[[[[[[[[[[[[[[[[[[[[SUBSCRIPTION SUB:]]]]]]]]]]]]]]]]]]]]]]', subscriptionSub);
       console.log('[[[[[[[[[[[[[[[[[[[[[[[[[FCM TOKEN:]]]]]]]]]]]]]]]]]]]]]]]]]', fcmToken);
 
       if (fcmToken) {
