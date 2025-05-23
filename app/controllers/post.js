@@ -27,7 +27,7 @@ const { uploadFileToSpaces } = require('./spaceUploader');
 const redisClient = require('../../config/redis');
 const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache } = require('../../utils/clearBlogCache');
 
-const { Op, Sequelize, where } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 
 exports.list = async (req, res) => {
     const token = getToken(req.headers);
@@ -213,179 +213,122 @@ exports.create = async (req, res, io) => {
     const senderName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
 
     try {
-        uploadMemory.array("file", 3)(req, res, async (err) => {
-            const { content, visibility, taggedUserIds } = req.body;
+        const { content, visibility, taggedUserIds, files } = req.body;
 
-            const files = req.files;
-            const taggedUserIdsToArray = taggedUserIds ? taggedUserIds.split(',') : [];
+        const newPost = await Post.create({
+            content,
+            visibility,
+            user_id: userId,
+        });
 
-            const newPost = await Post.create({
-                content,
-                visibility,
-                user_id: userId,
-            });
-
-            if (files.length > 0) {
-                let convertedFile = null;
-                let processedFile = null;
-                let filetype = null;
-            
-                for (const file of files) {
-                    const mimetype = file.mimetype;
-                    
-                    try {
-                        if (mimetype.startsWith('image/')) {
-                            convertedFile = await processImageToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
-                            filetype = 'image';
-                        } else if (mimetype.startsWith('video/')) {
-                            // convertedFile = await processVideoToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(file); // Ensure async upload
-                            filetype = 'video';
-                        } else if (mimetype.startsWith('audio/')) {
-                            processedFile = await uploadFileToSpaces(file); // Only upload for audio
-                            filetype = 'audio';
-                        } else {
-                            // Return error if the file type is not audio, video, or image
-                            return sendError(res, '', 'Please upload only audio, video, or image files.');
-                        }
-            
-                        // Create a new PostMedia entry for each processed file
-                        await PostMedia.create({
-                            post_id: newPost.id,
-                            url: processedFile,
-                            type: filetype,
-                        });
-            
-                    } catch (error) {
-                        console.error("Error processing file: ", error);
-                        return sendError(res, '', 'There was an error processing the file.');
-                    }
-                }
-            };
-            
-            if (taggedUserIdsToArray.length > 0) {
-                for (const taggedUserId of taggedUserIdsToArray) {
-                    await Tag.create({
-                        user_id: taggedUserId,
-                        post_id: newPost.id
+        if (files && files.length > 0) {
+            for (const file of files) {
+                
+                try {
+                    // Create a new PostMedia entry for each processed file
+                    await PostMedia.create({
+                        post_id: newPost.id,
+                        url: file.url,
+                        type: file.type,
                     });
-    
-                    await sendNotifiAndEmit ({
-                        sender_id: userId,
-                        recipient_id: taggedUserId,
-                        target_type: 'Tag',
-                        target_id: newPost.id,
-                        type: 'tag',
-                        message: `${senderName} tagged you in a post`,
-                        io
-                    })
+                } catch (error) {
+                    console.error("Error processing file: ", error);
+                    return sendError(res, '', 'There was an error processing the file.');
                 }
             }
+        };
+        
+        if (taggedUserIds && taggedUserIds.length > 0) {
+            for (const taggedUserId of taggedUserIds) {
+                await Tag.create({
+                    user_id: taggedUserId,
+                    post_id: newPost.id
+                });
 
-            await clearPostsCache();
+                await sendNotifiAndEmit ({
+                    sender_id: userId,
+                    recipient_id: taggedUserId,
+                    target_type: 'Tag',
+                    target_id: newPost.id,
+                    type: 'tag',
+                    message: `${senderName} tagged you in a post`,
+                    io
+                })
+            }
+        }
 
-            return sendSuccess(res, newPost, 'New Post Created');
-        });
+        await clearPostsCache();
+
+        return sendSuccess(res, newPost, 'New Post Created');
     } catch (error) {
         console.log('Unable to create post: ', error);
         return sendError(res, '', 'Unable to create post');
     }
 };
 
+// refactor follow atleast the structure of the create post function no need for upload memory
 exports.updateById = async (req, res) => {
-    const token = getToken(req.headers);
-    const decodedToken = decodeToken(token);
+  const token = getToken(req.headers);
+  const decodedToken = decodeToken(token);
 
-    if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
-    if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
+  if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
+  if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.user.id;
+  const userId = decodedToken.user.id;
 
-    try {
-        const { postId } = req.params;
-        uploadMemory.array("file", 3)(req, res, async (err) => {
-            const { content, visibility, filesToDelete } = req.body;
+  try {
+    const { postId } = req.params;
+    const { content, visibility, filesToDelete, files } = req.body;
 
-            const files = req.files;
-            const filesToDeleteArray = filesToDelete ? filesToDelete.split(',') : [];
+    const post = await Post.findOne({ where: { id: postId } });
 
-            const post = await Post.findOne({
-                where: { id: postId }
-            });
+    if (!post) return sendError(res, '', 'Post not found');
+    if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
 
-            if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to update this post.');
+    // 🔥 Handle file deletion
+    if (Array.isArray(filesToDelete) && filesToDelete.length > 0) {
+      for (const fileToDelete of filesToDelete) {
+        if (fileToDelete.includes('.webp')) {
+          await removeFileFromSpaces('images', fileToDelete);
+        } else if (fileToDelete.includes('.webm')) {
+          await removeFileFromSpaces('videos', fileToDelete);
+        } else {
+          await removeFileFromSpaces('audios', fileToDelete);
+        }
 
-            if (filesToDeleteArray.length > 0) {
-                for (const fileToDelete of filesToDeleteArray) {
-                    if (fileToDelete.includes('.webp')) {
-                        await removeFileFromSpaces('images', fileToDelete);
-                    } else if (fileToDelete.includes('.webm')) {
-                        await removeFileFromSpaces('videos', fileToDelete);
-                    } else {
-                        await removeFileFromSpaces('audios', fileToDelete);
-                    }
-
-                    await PostMedia.destroy({
-                        where: { url: fileToDelete }
-                    });
-                }
-            }
-
-            if (files.length > 0) {
-                let convertedFile = null;
-                let processedFile = null;
-                let filetype = null;
-            
-                // Use a for...of loop to handle async operations correctly
-                for (const file of files) {
-                    const mimetype = file.mimetype;
-                    
-                    try {
-                        if (mimetype.startsWith('image/')) {
-                            convertedFile = await processImageToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(convertedFile); // Ensure async upload
-                            filetype = 'image';
-                        } else if (mimetype.startsWith('video/')) {
-                            // convertedFile = await processVideoToSpace(file); // Ensure async processing
-                            processedFile = await uploadFileToSpaces(file); // Ensure async upload
-                            filetype = 'video';
-                        } else if (mimetype.startsWith('audio/')) {
-                            processedFile = await uploadFileToSpaces(file); // Only upload for audio
-                            filetype = 'audio';
-                        } else {
-                            // Return error if the file type is not audio, video, or image
-                            return sendError(res, '', 'Please upload only audio, video, or image files.');
-                        }
-            
-                        // Create a new PostMedia entry for each processed file
-                        await PostMedia.create({
-                            post_id: post.id,
-                            url: processedFile,
-                            type: filetype,
-                        });
-            
-                    } catch (error) {
-                        console.error("Error processing file: ", error);
-                        return sendError(res, '', 'There was an error processing the file.');
-                    }
-                }
-            }
-            
-            await post.update({
-                content,
-                visibility
-            });
-
-            await clearPostsCache(postId);
-
-            return sendSuccess(res, post, 'Post Updated');
+        await PostMedia.destroy({
+          where: { url: fileToDelete }
         });
-    } catch (error) {
-        console.log('Unable to create post: ', error);
-        return sendError(res, '', 'Unable to create post');
+      }
     }
+
+    // 🆕 Handle new files
+    if (Array.isArray(files) && files.length > 0) {
+      for (const file of files) {
+        const { url, type } = file;
+
+        if (!url || !type) continue;
+
+        await PostMedia.create({
+          post_id: post.id,
+          url,
+          type
+        });
+      }
+    }
+
+    // ✍️ Update post content and visibility
+    await post.update({ content, visibility });
+
+    await clearPostsCache(postId);
+
+    return sendSuccess(res, post, 'Post Updated');
+  } catch (error) {
+    console.log('Unable to update post: ', error);
+    return sendError(res, '', 'Unable to update post');
+  }
 };
+
 
 exports.deleteById = async (req, res) => {
     const token = getToken(req.headers);
