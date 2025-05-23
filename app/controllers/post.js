@@ -1339,29 +1339,23 @@ const sendNotifiAndEmit = async ({ sender_id, recipient_id, target_type, target_
 
   io.to(recipient_id).emit('new_notification', notification);
 
-  const subscription = await Subscription.findOne({
+  const subscriptions = await Subscription.findAll({
       where: { user_id: recipient_id },
-      raw: true,
   });
 
-  const subscriptionSub = typeof subscription?.subscription === 'string'
-                ? JSON.parse(subscription?.subscription)
-                : subscription?.subscription;
+  if (subscriptions.length > 0) {
+    for (const subscription of subscriptions) {
+        const subscriptionSub = typeof subscription?.subscription === 'string'
+            ? JSON.parse(subscription?.subscription)
+            : subscription?.subscription;
 
-  try {
-      const fcmToken = subscriptionSub?.fcmToken; // Access safely
-      
-      console.log('[[[[[[[[[[[[[[[[[[[[[[SUBSCRIPTION SUB:]]]]]]]]]]]]]]]]]]]]]]', subscriptionSub);
-      console.log('[[[[[[[[[[[[[[[[[[[[[[[[[FCM TOKEN:]]]]]]]]]]]]]]]]]]]]]]]]]', fcmToken);
-
-      if (fcmToken) {
-          await sendNotification(
-              fcmToken,
-              'WOTG Community',
-              message
-          );
-      }
-  } catch (error) {
-      console.error('Error sending push notification:', error);
-  }
+        if (subscriptionSub?.fcmToken) {
+            await sendNotification(
+                subscriptionSub.fcmToken,
+                'WOTG Community',
+                message
+            );
+        }
+    }
+  };
 };
