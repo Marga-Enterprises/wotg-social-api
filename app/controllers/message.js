@@ -151,8 +151,6 @@ exports.getMessagesByChatroom = async (req, res, io) => {
     }
 };
 
-
-// Save a new message and broadcast it
 exports.sendTextMessage = async (req, res, io) => {
   const token = getToken(req.headers);
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
@@ -327,11 +325,30 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io })
   const fullMessage = await Message.findOne({
     where: { id: message.id },
     attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'createdAt'],
-    include: [{
-      model: User,
-      as: 'sender',
-      attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
-    }]
+    include: [
+        {
+            model: User,
+            as: 'sender',
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+        },
+        {
+            model: Chatroom,
+            as: 'chatroom',
+            include: [
+                {
+                    model: Participant,
+                    as: 'Participants',
+                    include: [
+                        {
+                            model: User,
+                            as: 'user',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
   });
 
   io.to(chatroomId).emit('new_message', fullMessage);
