@@ -74,6 +74,7 @@ app.use("/uploads", express.static("uploads"));
 
 // **Live Viewer Count for Worship Page**
 let viewersMap = {}; // Store unique viewers by user email
+let onlineUsers = []; // Store online users
 
 io.on("connection", (socket) => {
     // console.log(`🟢 User connected: ${socket.id}`);
@@ -114,7 +115,26 @@ io.on("connection", (socket) => {
     });
 
     // Handle user disconnect (when closing tab, refresh, or lost connection)
+    socket.on("add_user_id_to_online_users", (user) => {
+        if (!user || !user.email) return; // Ensure user is authenticated
+
+        // Check if user already exists in onlineUsers
+        const existingUser = onlineUsers.find(u => u.email === user.email);
+        if (!existingUser) {
+            onlineUsers.push({
+                id: user.userId, // Assuming user.userId is the unique identifier
+                fullName: user.fullName,
+                email: user.email,
+                socketId: user.socketId, // Store socket ID for this user
+            });
+        }
+
+        // Broadcast updated online users
+        io.emit("online_users", onlineUsers);
+    });
+
     socket.on("disconnect", () => {
+        // ✅ Remove socket from viewersMap
         for (const email in viewersMap) {
             if (viewersMap[email].sockets.has(socket.id)) {
                 viewersMap[email].sockets.delete(socket.id);
@@ -125,13 +145,17 @@ io.on("connection", (socket) => {
             }
         }
 
-        // Broadcast updated viewer count and list
+        // ✅ Remove from onlineUsers using stored userId/email
+        onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
+
+        // ✅ Broadcast updated data
+        io.emit("online_users", onlineUsers);
         updateViewerCount(io);
     });
 
     // **New Feature: Real-Time Floating Reactions**
     socket.on("send_reaction", (reaction) => {
-        console.log("[[[[[[[[[[[[[[[[[[🚀 New Reaction:]]]]]]]]]]]]]]]]]]", reaction);
+        // console.log("[[[[[[[[[[[[[[[[[[🚀 New Reaction:]]]]]]]]]]]]]]]]]]", reaction);
         io.emit("new_reaction", reaction);
     });
 
@@ -145,7 +169,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on('new_message', (msg) => {
-        console.log('[[[[[[[[[[[[[[[[[[[[[[📨 Received new_message from frontend]]]]]]]]]]]]]]]]]]]]]]', msg);
+        // console.log('[[[[[[[[[[[[[[[[[[[[[[📨 Received new_message from frontend]]]]]]]]]]]]]]]]]]]]]]', msg);
         io.to(msg.chatroomId).emit('new_message', msg); // echo to others
     });
 
