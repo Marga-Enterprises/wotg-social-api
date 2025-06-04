@@ -1,0 +1,44 @@
+# 👇 Name of the GitHub Actions workflow
+name: Deploy to VPS
+
+# 👇 Trigger this workflow only when pushing to the 'master' branch
+on:
+  push:
+    branches:
+      - master  # ✅ Change to 'development' if testing from dev branch
+
+jobs:
+  deploy:
+    # 👇 This job runs on GitHub's Ubuntu virtual machine
+    runs-on: ubuntu-latest
+
+    steps:
+      # 👇 Step 1: Checks out the latest code from your GitHub repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 👇 Step 2: Runs a remote SSH script using appleboy/ssh-action
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          # 👇 These are GitHub Secrets configured in your repository
+          host: ${{ secrets.VPS_HOST }}          # Your VPS IP or domain
+          username: ${{ secrets.VPS_USER }}      # SSH username (e.g. ubuntu)
+          key: ${{ secrets.VPS_SSH_KEY }}        # Private SSH key (no passphrase)
+          
+          # 👇 These commands run on your VPS after SSH connection
+          script: |
+            echo "✅ Connecting to server..."
+
+            # 👇 Navigate to your app’s folder on the server
+            cd /var/www/community.wotgonline.com/wotg-social-api
+
+            echo "🔁 Pulling latest code..."
+            git reset --hard               # Discards any local changes
+            git pull origin master         # Pulls the latest commit from GitHub
+
+            echo "🐳 Rebuilding Docker containers..."
+            docker compose down            # Stops and removes existing containers
+            docker compose up -d --build   # Rebuilds and runs containers in detached mode
+
+            echo "🚀 Deployed!"
