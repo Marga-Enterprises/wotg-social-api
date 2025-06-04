@@ -32,7 +32,7 @@ Participant.init({
         allowNull: true, // A participant may not belong to a chat room
     },
     userId: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.INTEGER,
         allowNull: false, // Unique ID for the user
     },
     userName: {

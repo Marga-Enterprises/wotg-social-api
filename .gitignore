@@ -1,9 +1,32 @@
 # dependencies
-/node_modules
+node_modules/
 
 # local env files
 .env
+.env.production
 firebase-credentials.json
 
+# OS / Editor garbage
+.DS_Store
+*.log
+*.swp
+*.tmp
+*.sublime-project
+*.sublime-workspace
 
-/uploads
+# Docker artifacts (if any)
+Dockerfile.lock
+
+# Local uploads or storage
+uploads/
+storage/
+
+# Coverage and test output
+coverage/
+*.lcov
+
+# VSCode settings
+.vscode/
+
+# Ignore local DB/Redis data (if ever mounted outside container)
+db_data/
