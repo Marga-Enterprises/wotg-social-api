@@ -5,17 +5,21 @@ require('dotenv').config({
   path: path.resolve(__dirname, '.env') // Forcefully specify the path to .env
 });
 
+// Import necessary libraries
 const bcrypt = require('bcryptjs'); // Change to bcryptjs
 const jwt = require('jsonwebtoken');
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const moment = require("moment-timezone");
+const validator = require('validator'); 
 
+// Import models
 const User = require('../models/User'); // Import your User model
 const Chatroom = require('../models/Chatroom'); 
 const Participant = require('../models/Participant'); 
-const validator = require('validator'); // Import the validator library for email validation
 
+
+// Import utility functions
 const {
     sendError,
     sendSuccess,
@@ -34,7 +38,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
+// controller to handle user login
 exports.loginUser = async (req, res) => {
   const { email, password } = req.body;
 
@@ -85,6 +89,8 @@ exports.loginUser = async (req, res) => {
   }
 };
 
+
+// controller to handle user registration
 exports.createUser = async (req, res) => {
   const { user_fname, user_lname, email, password, user_gender = null } = req.body;
 
@@ -143,6 +149,7 @@ exports.createUser = async (req, res) => {
 };
 
 
+// controller to handle token refresh
 exports.refreshToken = async (req, res) => {
   const { refreshToken } = req.body; // ✅ Get refresh token from request body instead of cookies
 
@@ -170,6 +177,8 @@ exports.refreshToken = async (req, res) => {
   }
 };
 
+
+// controller to handle user logout
 exports.logoutUser = async (req, res) => {
   const { refreshToken } = req.body; // ✅ Get refresh token from request body instead of cookies
 
@@ -194,6 +203,7 @@ exports.logoutUser = async (req, res) => {
 };
 
 
+// controller to handle forgot password
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
 
@@ -246,7 +256,8 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// ✅ Reset Password (Using Asia/Manila Timezone)
+
+// controller to handle password reset
 exports.resetPassword = async (req, res) => {
   const { newPassword, confirmNewPassword } = req.body;
   const { token } = req.params; // ✅ Token received in plain text
@@ -303,3 +314,83 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+
+exports.guestLogin = async (req, res) => {
+  try {
+    const user_fname = "Guest";
+
+    // Generate a unique numeric lname
+    let user_lname;
+    let isUnique = false;
+
+    while (!isUnique) {
+      // Generate 6 random digits
+      const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Ensure it's numeric
+      if (!/^\d{6}$/.test(randomNumber)) {
+        continue; // skip if not exactly 6 digits (shouldn't happen, but safe)
+      }
+
+      // Check if lname exists in DB
+      const existingUser = await User.findOne({ where: { user_lname: randomNumber } });
+
+      if (!existingUser) {
+        user_lname = randomNumber;
+        isUnique = true;
+      }
+    }
+
+    const email = `${user_fname}${user_lname}@wotgonline.com`;
+
+    // Generate a random password and hash it
+    const plainPassword = crypto.randomBytes(8).toString("hex"); // 16-char random
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+    // Create or find the user
+    const [newUser, created] = await User.findOrCreate({
+      where: { email },
+      defaults: {
+        user_fname,
+        user_lname,
+        email,
+        password: hashedPassword,
+        user_role: "guest",
+        user_gender: null,
+      },
+    });
+
+    if (!created) {
+      return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
+    }
+
+    // Assign default chatrooms
+    const chatroomIds = process.env.NODE_ENV === "development" ? [37, 40] : [5, 7];
+    const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
+
+    for (const chatroom of chatrooms) {
+      await Participant.findOrCreate({
+        where: { chatRoomId: chatroom.id, userId: newUser.id },
+        defaults: { userName: `${newUser.user_fname} ${newUser.user_lname}` },
+      });
+    }
+
+    // Generate tokens
+    const accessToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+
+    // Store refresh token in DB
+    await User.update({ refreshToken }, { where: { id: newUser.id } });
+
+    return sendSuccess(
+      res,
+      { accessToken, refreshToken },
+      "Guest account created successfully!",
+      201,
+      0
+    );
+  } catch (err) {
+    console.error("Guest Login Error:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+};
