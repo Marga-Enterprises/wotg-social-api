@@ -324,17 +324,11 @@ exports.guestLogin = async (req, res) => {
     let isUnique = false;
 
     while (!isUnique) {
-      // Generate 6 random digits
       const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // Ensure it's numeric
-      if (!/^\d{6}$/.test(randomNumber)) {
-        continue; // skip if not exactly 6 digits (shouldn't happen, but safe)
-      }
+      if (!/^\d{6}$/.test(randomNumber)) continue;
 
-      // Check if lname exists in DB
       const existingUser = await User.findOne({ where: { user_lname: randomNumber } });
-
       if (!existingUser) {
         user_lname = randomNumber;
         isUnique = true;
@@ -343,11 +337,9 @@ exports.guestLogin = async (req, res) => {
 
     const email = `${user_fname}${user_lname}@wotgonline.com`;
 
-    // Generate a random password and hash it
-    const plainPassword = crypto.randomBytes(8).toString("hex"); // 16-char random
+    const plainPassword = crypto.randomBytes(8).toString("hex");
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-    // Create or find the user
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
@@ -364,7 +356,6 @@ exports.guestLogin = async (req, res) => {
       return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
     }
 
-    // Assign default chatrooms
     const chatroomIds = process.env.NODE_ENV === "development" ? [37, 40] : [5, 7];
     const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
 
@@ -375,22 +366,38 @@ exports.guestLogin = async (req, res) => {
       });
     }
 
-    // Generate tokens
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
 
-    // Store refresh token in DB
     await User.update({ refreshToken }, { where: { id: newUser.id } });
 
-    return sendSuccess(
+    // ✅ Send success to the user immediately
+    sendSuccess(
       res,
       { accessToken, refreshToken },
       "Guest account created successfully!",
       201,
       0
     );
+
+    // 📧 Send email asynchronously (no await here so it won't block response)
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: 'michael.marga@gmail.com',
+      subject: "New Guest Account Created",
+      text: "A new guest account has joined the platform and added to the wotg admin"
+        + `\n\nGuest Name: ${user_fname} ${user_lname}`
+        + `\nEmail: ${email}`
+        + `\n\nPlease ensure to monitor guest activities.`,
+    };
+
+    transporter.sendMail(mailOptions).catch(err => {
+      console.error("Email send error:", err);
+    });
+
   } catch (err) {
     console.error("Guest Login Error:", err);
     return res.status(500).json({ error: "Internal server error." });
   }
 };
+
