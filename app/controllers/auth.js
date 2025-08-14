@@ -15,8 +15,11 @@ const validator = require('validator');
 
 // Import models
 const User = require('../models/User'); // Import your User model
-const Chatroom = require('../models/Chatroom'); 
-const Participant = require('../models/Participant'); 
+const Message = require('../models/Message'); // Import Message model
+const Chatroom = require('../models/Chatroom'); // Import Message model
+const Subscription = require('../models/Subscription'); // Import Message model
+const Participant = require('../models/Participant'); // Import Message model
+const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
 
 
 // Import utility functions
@@ -315,31 +318,28 @@ exports.resetPassword = async (req, res) => {
 };
 
 
-exports.guestLogin = async (req, res) => {
+exports.guestLogin = async (req, res, io) => {
   try {
     const user_fname = "Guest";
 
     // Generate a unique numeric lname
     let user_lname;
-    let isUnique = false;
-
-    while (!isUnique) {
+    while (true) {
       const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
-
       if (!/^\d{6}$/.test(randomNumber)) continue;
 
       const existingUser = await User.findOne({ where: { user_lname: randomNumber } });
       if (!existingUser) {
         user_lname = randomNumber;
-        isUnique = true;
+        break;
       }
     }
 
     const email = `${user_fname}${user_lname}@wotgonline.com`;
-
     const plainPassword = crypto.randomBytes(8).toString("hex");
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
+    // Create or find the guest
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
@@ -356,7 +356,8 @@ exports.guestLogin = async (req, res) => {
       return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
     }
 
-    const chatroomIds = process.env.NODE_ENV === "development" ? [37, 40] : [5, 7];
+    // Add default chatrooms
+    const chatroomIds = [5, 7];
     const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
 
     for (const chatroom of chatrooms) {
@@ -371,7 +372,24 @@ exports.guestLogin = async (req, res) => {
 
     await User.update({ refreshToken }, { where: { id: newUser.id } });
 
-    // ✅ Send success to the user immediately
+    // Emit welcome message to chatroom
+    await createAndEmitMessage({
+      content: 
+      ` Welcome aboard, ${newUser.user_fname} ${newUser.user_lname}!
+        Para mas madali ka naming tawagin sa iyong pangalan at ma-assist nang maayos, pakisagot po ito:
+
+        1. Full Name
+        2. Email
+        3. Mobile Number
+        4. FB Messenger Name
+      `,
+      senderId: 244,
+      chatroomId: 5,
+      type: 'text',
+      io,
+    });
+
+    // Send success to the user immediately
     sendSuccess(
       res,
       { accessToken, refreshToken },
@@ -380,18 +398,24 @@ exports.guestLogin = async (req, res) => {
       0
     );
 
-    // 📧 Send email asynchronously (no await here so it won't block response)
+    // Send email to admin (async)
+    const adminEmail =
+      process.env.NODE_ENV === "development"
+        ? "pillorajem10@gmail.com"
+        : "michael.marga@gmail.com";
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
-      to: 'michael.marga@gmail.com',
+      to: adminEmail,
       subject: "New Guest Account Created",
-      text: "A new guest account has joined the platform and added to the wotg admin"
-        + `\n\nGuest Name: ${user_fname} ${user_lname}`
-        + `\nEmail: ${email}`
-        + `\n\nPlease ensure to monitor guest activities.`,
+      text:
+        "A new guest account has joined the platform and added to the wotg admin" +
+        `\n\nGuest Name: ${user_fname} ${user_lname}` +
+        `\nEmail: ${email}` +
+        `\n\nPlease ensure to monitor guest activities.`,
     };
 
-    transporter.sendMail(mailOptions).catch(err => {
+    transporter.sendMail(mailOptions).catch((err) => {
       console.error("Email send error:", err);
     });
 
@@ -401,3 +425,92 @@ exports.guestLogin = async (req, res) => {
   }
 };
 
+
+const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io }) => {
+  const message = await Message.create({ content, senderId, chatroomId, type });
+
+  const fullMessage = await Message.findOne({
+    where: { id: message.id },
+    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'createdAt'],
+    include: [
+        {
+            model: User,
+            as: 'sender',
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+        },
+        {
+            model: Chatroom,
+            as: 'chatroom',
+            include: [
+                {
+                    model: Participant,
+                    as: 'Participants',
+                    include: [
+                        {
+                            model: User,
+                            as: 'user',
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+  });
+
+  io.to(chatroomId).emit('new_message', fullMessage);
+
+  const participants = await Participant.findAll({
+    where: { chatRoomId: chatroomId },
+    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
+  });
+
+  const filteredParticipants = participants.filter(p => p.user.id !== senderId);
+
+  await Promise.all(filteredParticipants.map(participant =>
+    MessageReadStatus.create({
+      messageId: message.id,
+      userId: participant.user.id,
+      read: false
+    })
+  ));
+
+  // Emit unread count
+  for (const participant of filteredParticipants) {
+    const unreadCount = await MessageReadStatus.count({
+      where: { userId: participant.user.id, read: false },
+      include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
+    });
+
+    io.to(`user_${participant.user.id}`).emit('unread_update', {
+      chatroomId,
+      unreadCount
+    });
+  }
+
+  // Send push notifications
+  await Promise.all(filteredParticipants.map(async (participant) => {
+    const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
+
+    await Promise.all(subscriptions.map(async (subscription) => {
+      try {
+        const subData = typeof subscription.subscription === 'string'
+          ? JSON.parse(subscription.subscription)
+          : subscription.subscription;
+
+        const fcmToken = subData?.fcmToken;
+        if (fcmToken) {
+          await sendNotification(
+            fcmToken,
+            `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`,
+            fullMessage.type === 'file' ? 'Sent an image' : content
+          );
+        }
+      } catch (err) {
+        console.error('❌ Push notification error:', err);
+      }
+    }));
+  }));
+
+  return fullMessage;
+};

@@ -53,7 +53,7 @@ app.use(cors());
 app.use(compression());
 
 // ✅ Use Routes
-app.use("/auth", authRoutes);
+app.use("/auth", authRoutes(io));
 app.use("/users", userRoutes);
 app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
