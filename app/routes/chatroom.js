@@ -9,7 +9,7 @@ module.exports = (io) => {
     // router.use(authMiddleware);
 
     // Fetch all chatrooms
-    router.get("/", chatroomController.getAllChatrooms);
+    router.get("/", (req, res) => chatroomController.getAllChatrooms(req, res, io));
     router.post("/", (req, res) => chatroomController.createChatroom(req, res, io));
     router.put("/:id", (req, res) => chatroomController.updateChatroom(req, res, io));
     router.post("/add-participants", (req, res) => chatroomController.addParticipants(req, res, io));
