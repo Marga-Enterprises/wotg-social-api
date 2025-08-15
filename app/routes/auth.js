@@ -4,8 +4,8 @@ module.exports = (io) => {
     const router = express.Router();
     const authController = require('../controllers/auth');
 
-    router.post('/register', authController.createUser);
-    router.post('/login', authController.loginUser);
+    router.post('/register', (req, res) => authController.createUser(req, res, io));
+    router.post('/login', (req, res) => authController.loginUser(req, res, io));
     router.post('/refresh-token', authController.refreshToken);
     router.post('/logout', authController.logoutUser); 
     router.post('/forgot-password', authController.forgotPassword);

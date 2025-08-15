@@ -175,10 +175,10 @@ exports.loginUser = async (req, res, io) => {
 
 
 // controller to handle user registration
-exports.createUser = async (req, res) => {
-  const { user_fname, user_lname, email, password, user_gender = null } = req.body;
+exports.createUser = async (req, res, io) => {
+  const { user_fname, user_lname, email, user_gender = null, user_mobile_number, user_social_media } = req.body;
 
-  if (!user_fname || !user_lname || !email || !password) {
+  if (!user_fname || !user_lname || !email || !user_mobile_number) {
     return sendError(res, {}, "All required fields must be filled.", 400, 101);
   }
 
@@ -187,13 +187,15 @@ exports.createUser = async (req, res) => {
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(user_mobile_number, 10);
 
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
         user_fname,
         user_lname,
+        user_social_media,
+        user_mobile_number,
         password: hashedPassword,
         user_role: "member",
         user_gender,
@@ -221,6 +223,85 @@ exports.createUser = async (req, res) => {
     // Generate tokens
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
+
+    let participants = [newUser.id, 10]; // Assuming 10 is the admin user ID
+    let chatroomLoginId = 0;
+
+    // Create a new chatroom for the user
+    const existingChatroom = await Participant.findAll({
+        where: { userId: participants }, // Filter participants matching the provided IDs
+        attributes: ['chatRoomId'], // Only select the chatRoomId
+        include: [
+            {
+                model: Chatroom, // Join with the Chatroom model
+                attributes: [], // Exclude Chatroom fields from the result
+                where: { type: 'private' }, // Only include private chatrooms
+            },
+        ],
+        group: ['chatRoomId'], // Group by chatRoomId
+        having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure exactly 2 participants in the same chatroom
+    });
+
+
+    if (existingChatroom.length <= 0) {
+        let chatroomName = null;
+
+        const users = await User.findAll({
+            where: { id: participants },
+            attributes: ['user_fname', 'user_lname'], // Only select the required fields
+        });
+
+        chatroomName = users
+          .map((user) => `${user.user_fname} ${user.user_lname}`)
+          .join(', ');
+
+        // Create a new chatroom with the determined type and name
+        const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
+
+        // Create participants for the chatroom
+        const participantsData = participants.map((userId) => ({
+            userId,
+            chatRoomId: chatroom.id, // Link the participant to the newly created chatroom
+        }));
+
+        // Insert participants into the Participant model
+        await Participant.bulkCreate(participantsData);
+
+        // Fetch participants' user details to include in the response
+        const chatroomParticipants = await Participant.findAll({
+            where: { chatRoomId: chatroom.id },
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'user_fname', 'user_lname', 'email'],
+                },
+            ],
+            attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+        });
+
+        // Prepare the chatroom data with participants to be returned
+        const chatroomWithParticipants = {
+            id: chatroom.id,
+            name: chatroom.name,
+            type: 'private', // Use the dynamically determined type
+            createdAt: chatroom.createdAt,
+            updatedAt: chatroom.updatedAt,
+            messages: [], // No messages yet for the newly created chatroom
+            Participants: chatroomParticipants,
+            unreadCount: 0, // Initially, no unread messages
+            hasUnread: false, // No unread messages
+        };
+
+        // Set chatroomLoginId to the newly created chatroom ID
+        chatroomLoginId = chatroomWithParticipants.id;
+        // Emit a real-time event for the new chatroom with participants
+        if (io) {
+            io.emit('new_chatroom', chatroomWithParticipants);
+        }
+    } else {
+      chatroomLoginId = existingChatroom[0].chatRoomId; // Use the existing chatroom ID
+    }; 
 
     // Store refresh token in DB
     await User.update({ refreshToken: refreshToken }, { where: { id: newUser.id } });
@@ -536,10 +617,11 @@ exports.guestLogin = async (req, res, io) => {
             Para mas madali ka naming tawagin sa iyong pangalan at ma-assist nang maayos, pakisagot po ito:
 
             1. Full Name
-            2. Email
-            3. Phone Number
-            4. Mobile Number
-            5. FB Messenger Name
+            2. Last Name
+            3. Email
+            4. Phone Number
+            5. Mobile Number
+            6. FB Messenger Name
           `,
           senderId: 10,
           chatroomId: chatroom.id,

@@ -47,6 +47,11 @@ User.init({
         allowNull: true,
         defaultValue: null,
     },
+    user_social_media: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        defaultValue: null,
+    },
     user_church_name: {
         type: DataTypes.STRING(255),
         allowNull: true,
