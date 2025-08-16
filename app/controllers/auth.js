@@ -220,93 +220,79 @@ exports.createUser = async (req, res, io) => {
       });
     }
 
+    console.log("[[[[[[[New user ID]]]]]]]", newUser.id);
+
     // Generate tokens
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
 
-    let participants = [newUser.id, 10]; // Assuming 10 is the admin user ID
+    let participants = [newUser.id, 10]; 
     let chatroomLoginId = 0;
 
-    // Create a new chatroom for the user
-    const existingChatroom = await Participant.findAll({
-        where: { userId: participants }, // Filter participants matching the provided IDs
-        attributes: ['chatRoomId'], // Only select the chatRoomId
-        include: [
-            {
-                model: Chatroom, // Join with the Chatroom model
-                attributes: [], // Exclude Chatroom fields from the result
-                where: { type: 'private' }, // Only include private chatrooms
-            },
-        ],
-        group: ['chatRoomId'], // Group by chatRoomId
-        having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure exactly 2 participants in the same chatroom
+    console.log("[[[[[[[[[[[[[[[[[[[[participants]]]]]]]]]]]]]]]]]]]]:", participants);
+
+    let chatroomName = null;
+
+    const users = await User.findAll({
+        where: { id: participants },
+        attributes: ['user_fname', 'user_lname'], // Only select the required fields
     });
 
+    chatroomName = users
+      .map((user) => `${user.user_fname} ${user.user_lname}`)
+      .join(', ');
 
-    if (existingChatroom.length <= 0) {
-        let chatroomName = null;
+    // Create a new chatroom with the determined type and name
+    const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
 
-        const users = await User.findAll({
-            where: { id: participants },
-            attributes: ['user_fname', 'user_lname'], // Only select the required fields
-        });
+    // Create participants for the chatroom
+    const participantsData = participants.map((userId) => ({
+        userId,
+        chatRoomId: chatroom.id, // Link the participant to the newly created chatroom
+    }));
 
-        chatroomName = users
-          .map((user) => `${user.user_fname} ${user.user_lname}`)
-          .join(', ');
+    // Insert participants into the Participant model
+    await Participant.bulkCreate(participantsData);
 
-        // Create a new chatroom with the determined type and name
-        const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
+    // Fetch participants' user details to include in the response
+    const chatroomParticipants = await Participant.findAll({
+        where: { chatRoomId: chatroom.id },
+        include: [
+            {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'user_fname', 'user_lname', 'email'],
+            },
+        ],
+        attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+    });
 
-        // Create participants for the chatroom
-        const participantsData = participants.map((userId) => ({
-            userId,
-            chatRoomId: chatroom.id, // Link the participant to the newly created chatroom
-        }));
+    // Prepare the chatroom data with participants to be returned
+    const chatroomWithParticipants = {
+        id: chatroom.id,
+        name: chatroom.name,
+        type: 'private', // Use the dynamically determined type
+        createdAt: chatroom.createdAt,
+        updatedAt: chatroom.updatedAt,
+        messages: [], // No messages yet for the newly created chatroom
+        Participants: chatroomParticipants,
+        unreadCount: 0, // Initially, no unread messages
+        hasUnread: false, // No unread messages
+    };
 
-        // Insert participants into the Participant model
-        await Participant.bulkCreate(participantsData);
+    // Set chatroomLoginId to the newly created chatroom ID
+    chatroomLoginId = chatroomWithParticipants.id;
+    // Emit a real-time event for the new chatroom with participants
+    if (io) {
+        io.emit('new_chatroom', chatroomWithParticipants);
+    }
 
-        // Fetch participants' user details to include in the response
-        const chatroomParticipants = await Participant.findAll({
-            where: { chatRoomId: chatroom.id },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'user_fname', 'user_lname', 'email'],
-                },
-            ],
-            attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
-        });
-
-        // Prepare the chatroom data with participants to be returned
-        const chatroomWithParticipants = {
-            id: chatroom.id,
-            name: chatroom.name,
-            type: 'private', // Use the dynamically determined type
-            createdAt: chatroom.createdAt,
-            updatedAt: chatroom.updatedAt,
-            messages: [], // No messages yet for the newly created chatroom
-            Participants: chatroomParticipants,
-            unreadCount: 0, // Initially, no unread messages
-            hasUnread: false, // No unread messages
-        };
-
-        // Set chatroomLoginId to the newly created chatroom ID
-        chatroomLoginId = chatroomWithParticipants.id;
-        // Emit a real-time event for the new chatroom with participants
-        if (io) {
-            io.emit('new_chatroom', chatroomWithParticipants);
-        }
-    } else {
-      chatroomLoginId = existingChatroom[0].chatRoomId; // Use the existing chatroom ID
-    }; 
+    console.log("[[[[[[[[[[[[[[[[[[[[[[[[[chatroomLoginId]]]]]]]]]]]]]]]]]]]]]]]]]:", chatroomLoginId);
 
     // Store refresh token in DB
     await User.update({ refreshToken: refreshToken }, { where: { id: newUser.id } });
 
-    return sendSuccess(res, { accessToken, refreshToken }, "User created successfully!", 201, 0);
+    return sendSuccess(res, { accessToken, refreshToken, chatroomLoginId }, "User created successfully!", 201, 0);
   } catch (err) {
     console.error("Sequelize error:", err);
     return res.status(500).json({ error: "Internal server error." });
@@ -626,6 +612,7 @@ exports.guestLogin = async (req, res, io) => {
           senderId: 10,
           chatroomId: chatroom.id,
           type: 'text',
+          category: 'automated',
           io,
         });
     } else {
@@ -669,8 +656,8 @@ exports.guestLogin = async (req, res, io) => {
 };
 
 
-const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io }) => {
-  const message = await Message.create({ content, senderId, chatroomId, type });
+const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
+  const message = await Message.create({ content, senderId, chatroomId, type, category });
 
   const fullMessage = await Message.findOne({
     where: { id: message.id },

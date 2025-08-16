@@ -28,7 +28,12 @@ Message.init({
         type: DataTypes.STRING(20), // or ENUM if you want strict values
         allowNull: false,
         defaultValue: 'text',
-    },    
+    },
+    category: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        defaultValue: 'normal',
+    },
 }, {
     sequelize,
     modelName: 'Message',
