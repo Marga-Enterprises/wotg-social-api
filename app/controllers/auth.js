@@ -220,16 +220,12 @@ exports.createUser = async (req, res, io) => {
       });
     }
 
-    console.log("[[[[[[[New user ID]]]]]]]", newUser.id);
-
     // Generate tokens
     const accessToken = generateAccessToken(newUser);
     const refreshToken = generateRefreshToken(newUser);
 
     let participants = [newUser.id, 10]; 
     let chatroomLoginId = 0;
-
-    console.log("[[[[[[[[[[[[[[[[[[[[participants]]]]]]]]]]]]]]]]]]]]:", participants);
 
     let chatroomName = null;
 
@@ -286,8 +282,6 @@ exports.createUser = async (req, res, io) => {
     if (io) {
         io.emit('new_chatroom', chatroomWithParticipants);
     }
-
-    console.log("[[[[[[[[[[[[[[[[[[[[[[[[[chatroomLoginId]]]]]]]]]]]]]]]]]]]]]]]]]:", chatroomLoginId);
 
     // Store refresh token in DB
     await User.update({ refreshToken: refreshToken }, { where: { id: newUser.id } });
