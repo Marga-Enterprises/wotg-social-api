@@ -68,18 +68,6 @@ exports.generateAccessToken = (user) => {
   );
 };
 
-/**
- * Generate Refresh Token (Long-lived)
- * @param {Object} user
- * @returns {String} JWT Refresh Token
- */
-exports.generateRefreshToken = (user) => {
-  return jwt.sign(
-    { userId: user.id },
-    process.env.REFRESH_SECRET,
-    { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '365d' } // Default: 1 year
-  );
-};
 
 exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = '') => {
   return v.status(errNo).json({

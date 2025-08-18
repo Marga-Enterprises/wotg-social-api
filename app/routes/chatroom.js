@@ -1,13 +1,9 @@
 const express = require("express");
-const authMiddleware = require("../middlewares/authMiddleware"); // ✅ Import authentication middleware
 
 module.exports = (io) => {
     const router = express.Router();
     const chatroomController = require("../controllers/chatroom");
-
-    // Apply `authMiddleware` to all chatroom routes
-    // router.use(authMiddleware);
-
+    
     // Fetch all chatrooms
     router.get("/", (req, res) => chatroomController.getAllChatrooms(req, res, io));
     router.post("/", (req, res) => chatroomController.createChatroom(req, res, io));

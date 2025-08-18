@@ -6,7 +6,6 @@ module.exports = (io) => {
 
     router.post('/register', (req, res) => authController.createUser(req, res, io));
     router.post('/login', (req, res) => authController.loginUser(req, res, io));
-    router.post('/refresh-token', authController.refreshToken);
     router.post('/logout', authController.logoutUser); 
     router.post('/forgot-password', authController.forgotPassword);
     router.post('/reset-password/:token', authController.resetPassword);
