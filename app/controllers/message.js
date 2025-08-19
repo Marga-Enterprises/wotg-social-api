@@ -161,13 +161,54 @@ exports.sendTextMessage = async (req, res, io) => {
   }
 
   try {
-    const fullMessage = await createAndEmitMessage({ content, senderId, chatroomId, type, io });
+    const fullMessage = await createAndEmitMessage({ 
+        content, 
+        senderId, 
+        chatroomId, 
+        type, 
+        category: 'normal',
+        io 
+    });
     return sendSuccess(res, fullMessage);
   } catch (error) {
     console.error('❌ sendTextMessage error:', error);
     return sendError(res, error, 'Failed to send message.');
   }
 };  
+
+exports.sendBotMessage = async (req, res, io) => {
+    const token = getToken(req.headers);
+    if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+
+    const { senderId, receiverFname, receiverLname } = req.body; 
+    if (!senderId) {
+        return sendError(res, '', 'Missing required fields.');
+    }
+
+    try {
+        const fullMessage = await createAndEmitMessage({
+            content: 
+              `Welcome aboard, Guests!\n
+              Para mas madali ka naming tawagin sa iyong pangalan at ma-assist nang maayos, pakisagot po ito:\n
+              1. Full Name\n
+              2. Last Name\n
+              3. Email\n
+              4. Phone Number\n
+              5. Mobile Number\n
+              6. FB Messenger Name`,
+            senderId,
+            chatroomId: 7,
+            type: 'text', 
+            category: 'automated',
+            io
+        });
+
+        return sendSuccess(res, fullMessage);
+    } catch (error) {
+        console.error('❌ sendBotMessage error:', error);
+        return sendError(res, error, 'Failed to send bot message.');
+    }
+};
 
 exports.sendFileMessage = (req, res, io) => {
   uploadMemory.single('file')(req, res, async (err) => {
@@ -319,12 +360,12 @@ exports.reactToMessage = async (req, res, io) => {
     }
 };
 
-const createAndEmitMessage = async ({ content, senderId, chatroomId, type, io }) => {
-  const message = await Message.create({ content, senderId, chatroomId, type });
+const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
+  const message = await Message.create({ content, senderId, chatroomId, type, category });
 
   const fullMessage = await Message.findOne({
     where: { id: message.id },
-    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'createdAt'],
+    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'category', 'createdAt'],
     include: [
         {
             model: User,

@@ -66,7 +66,7 @@ exports.loginUser = async (req, res, io) => {
     }
 
     // Define chatroom IDs based on environment
-    const chatroomIds = process.env.NODE_ENV === 'development' ? [37, 40] : [5, 7];
+    const chatroomIds = [5, 7];
 
     // Add user to chatrooms if not already a participant
     for (const chatroomId of chatroomIds) {
@@ -192,7 +192,7 @@ exports.createUser = async (req, res, io) => {
     }
 
     // Define chatroom IDs based on environment
-    const chatroomIds = process.env.NODE_ENV === "development" ? [37, 40] : [5, 7];
+    const chatroomIds = [5, 7];
 
     // Fetch chatrooms in one query
     const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
@@ -279,7 +279,6 @@ exports.logoutUser = async (req, res) => {
     return res.status(500).json({ error: "Internal server error." });
   }
 };
-
 
 
 // controller to handle forgot password
