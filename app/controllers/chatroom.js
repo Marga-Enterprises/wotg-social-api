@@ -90,7 +90,7 @@ exports.getAllChatrooms = async (req, res) => {
                     {
                         model: User,
                         as: 'user',
-                        attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture'],
+                        attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture', 'user_role'],
                     },
                 ],
                 attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],

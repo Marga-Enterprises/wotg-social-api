@@ -48,7 +48,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                             {
                                 model: User,
                                 as: 'user',
-                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
                             },
                         ],
                     },
@@ -66,7 +66,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                     {
                         model: User,
                         as: 'sender',
-                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'], // Fetch only the necessary fields
+                        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'], // Fetch only the necessary fields
                     },
                     {
                         model: MessageReact, // Include reactions
@@ -75,7 +75,7 @@ exports.getMessagesByChatroom = async (req, res, io) => {
                             {
                                 model: User,
                                 as: 'user',
-                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'], // Fetch only the necessary fields
                             },
                         ],
                         attributes: ['id', 'react', 'userId', 'messageId', 'createdAt'],
@@ -270,7 +270,7 @@ exports.reactToMessage = async (req, res, io) => {
             include: [{ 
                 model: User, 
                 as: 'sender', 
-                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] 
+                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'] // Fetch only the necessary fields
             }]
         });
 
@@ -370,7 +370,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
         {
             model: User,
             as: 'sender',
-            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role', 'user_role'], 
         },
         {
             model: Chatroom,
@@ -383,7 +383,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
                         {
                             model: User,
                             as: 'user',
-                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'], // Fetch only the necessary fields
                         }
                     ]
                 }

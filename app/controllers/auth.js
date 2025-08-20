@@ -577,7 +577,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
         {
             model: User,
             as: 'sender',
-            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'] // Fetch only the necessary fields
         },
         {
             model: Chatroom,
@@ -590,7 +590,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
                         {
                             model: User,
                             as: 'user',
-                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture']
+                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'] // Fetch only the necessary fields
                         }
                     ]
                 }
