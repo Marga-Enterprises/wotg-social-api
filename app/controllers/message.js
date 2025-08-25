@@ -361,12 +361,24 @@ exports.reactToMessage = async (req, res, io) => {
     }
 };
 
-exports.sendBotReply = async ({ message, userId, chatroomId, io }) => {
+exports.sendBotReply = async (req, res, io) => {
+  const token = getToken(req.headers);
+  if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
+
+  const { message, userId, chatroomId } = req.body;
+
+  console.log('[[[[[[[[[[[[Received bot reply request:]]]]]]]]]]]]', { message, userId, chatroomId });
+
+  const content = message.trim();
+
   try {
-    const content = message.content.trim();
     let botState = await GuestBotState.findOne({ where: { userId } });
 
-    if (!botState || botState.currentStep === 'completed') return;
+    if (!botState || botState.currentStep === 'completed') {
+      return sendSuccess(res, { status: 'done' }, 'Bot flow is already completed.');
+    }
+
+    let botReply;
 
     switch (botState.currentStep) {
       case 'awaiting_name':
@@ -374,79 +386,62 @@ exports.sendBotReply = async ({ message, userId, chatroomId, io }) => {
           botState.fullName = content;
           botState.currentStep = 'awaiting_email';
           await botState.save();
-          return sendBot({
-            chatroomId,
-            content: `Salamat, ${content}! 🙌\nMasaya kaming makilala ka.\nAno naman ang iyong email address para maipadala namin ang mga updates at resources sa’yo?`,
-            io
-          });
+          botReply = `Salamat, ${content}! 🙌\nMasaya kaming makilala ka.\nAno naman ang iyong email address para maipadala namin ang mga updates at resources sa’yo?`;
         } else {
-          return sendBot({
-            chatroomId,
-            content: `Hehe, puwede ko bang malaman ang **buong pangalan mo**? Halimbawa: Juan Dela Cruz 😊`,
-            io
-          });
+          botReply = `Hehe, puwede ko bang malaman ang **buong pangalan mo**? Halimbawa: Juan Dela Cruz 😊`;
         }
+        break;
 
       case 'awaiting_email':
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content)) {
           botState.email = content;
           botState.currentStep = 'awaiting_mobile';
           await botState.save();
-          return sendBot({
-            chatroomId,
-            content: `Nice! ✅\nAno naman ang iyong **mobile number**, para makapagpadala kami ng reminders at mabilis na updates? (Promise, walang spam 😇)`,
-            io
-          });
+          botReply = `Nice! ✅\nAno naman ang iyong **mobile number**, para makapagpadala kami ng reminders at mabilis na updates? (Promise, walang spam 😇)`;
         } else {
-          return sendBot({
-            chatroomId,
-            content: `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`,
-            io
-          });
+          botReply = `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`;
         }
+        break;
 
       case 'awaiting_mobile':
         if (/^(09|\+639)\d{9}$/.test(content)) {
           botState.mobile = content;
           botState.currentStep = 'awaiting_fb_name';
           await botState.save();
-          return sendBot({
-            chatroomId,
-            content: `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`,
-            io
-          });
+          botReply = `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`;
         } else {
-          return sendBot({
-            chatroomId,
-            content: `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`,
-            io
-          });
+          botReply = `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`;
         }
+        break;
 
       case 'awaiting_fb_name':
         if (content.length >= 2) {
           botState.fbName = content;
           botState.currentStep = 'completed';
           await botState.save();
-          return sendBot({
-            chatroomId,
-            content: `🎉 Salamat, ${botState.fullName}!\nKumpleto na. May volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`,
-            io
-          });
+          botReply = `🎉 Salamat, ${botState.fullName}!\nKumpleto na. May volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`;
         } else {
-          return sendBot({
-            chatroomId,
-            content: `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin. 😊`,
-            io
-          });
+          botReply = `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin. 😊`;
         }
+        break;
 
       default:
-        return;
+        botReply = `⚠️ May konting aberya. Subukan mong i-refresh o i-type ulit.`;
+        break;
     }
 
+    // Emit bot reply to the chatroom
+    await sendBot({
+      chatroomId,
+      content: botReply,
+      io,
+    });
+
+    return sendSuccess(res, { step: botState.currentStep, reply: botReply }, 'Bot reply sent.');
+
   } catch (error) {
-    console.error("❌ Bot Reply Error:", error);
+    console.error('❌ sendBotReply error:', error);
+    return sendError(res, error, 'Failed to send bot reply.');
   }
 };
 
