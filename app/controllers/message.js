@@ -1,4 +1,5 @@
 const Message = require('../models/Message'); // Import Message model
+const GuestBotState = require('../models/GuestBotState'); // Import Message model
 const Chatroom = require('../models/Chatroom'); // Import Message model
 const Subscription = require('../models/Subscription'); // Import Message model
 const Participant = require('../models/Participant'); // Import Message model
@@ -360,6 +361,185 @@ exports.reactToMessage = async (req, res, io) => {
     }
 };
 
+exports.sendBotReply = async ({ message, userId, chatroomId, io }) => {
+  try {
+    const content = message.content.trim();
+    let botState = await GuestBotState.findOne({ where: { userId } });
+
+    if (!botState || botState.currentStep === 'completed') return;
+
+    switch (botState.currentStep) {
+      case 'awaiting_name':
+        if (/^[a-zA-Z\s]{2,}$/.test(content)) {
+          botState.fullName = content;
+          botState.currentStep = 'awaiting_email';
+          await botState.save();
+          return sendBot({
+            chatroomId,
+            content: `Salamat, ${content}! 🙌\nMasaya kaming makilala ka.\nAno naman ang iyong email address para maipadala namin ang mga updates at resources sa’yo?`,
+            io
+          });
+        } else {
+          return sendBot({
+            chatroomId,
+            content: `Hehe, puwede ko bang malaman ang **buong pangalan mo**? Halimbawa: Juan Dela Cruz 😊`,
+            io
+          });
+        }
+
+      case 'awaiting_email':
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content)) {
+          botState.email = content;
+          botState.currentStep = 'awaiting_mobile';
+          await botState.save();
+          return sendBot({
+            chatroomId,
+            content: `Nice! ✅\nAno naman ang iyong **mobile number**, para makapagpadala kami ng reminders at mabilis na updates? (Promise, walang spam 😇)`,
+            io
+          });
+        } else {
+          return sendBot({
+            chatroomId,
+            content: `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`,
+            io
+          });
+        }
+
+      case 'awaiting_mobile':
+        if (/^(09|\+639)\d{9}$/.test(content)) {
+          botState.mobile = content;
+          botState.currentStep = 'awaiting_fb_name';
+          await botState.save();
+          return sendBot({
+            chatroomId,
+            content: `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`,
+            io
+          });
+        } else {
+          return sendBot({
+            chatroomId,
+            content: `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`,
+            io
+          });
+        }
+
+      case 'awaiting_fb_name':
+        if (content.length >= 2) {
+          botState.fbName = content;
+          botState.currentStep = 'completed';
+          await botState.save();
+          return sendBot({
+            chatroomId,
+            content: `🎉 Salamat, ${botState.fullName}!\nKumpleto na. May volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`,
+            io
+          });
+        } else {
+          return sendBot({
+            chatroomId,
+            content: `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin. 😊`,
+            io
+          });
+        }
+
+      default:
+        return;
+    }
+
+  } catch (error) {
+    console.error("❌ Bot Reply Error:", error);
+  }
+};
+
+const sendBot = async ({ chatroomId, content, io }) => {
+  const message = await Message.create({
+    content,
+    senderId: 10,
+    chatroomId,
+    type: 'text',
+    category: 'automated'
+  });
+
+  const fullMessage = await Message.findOne({
+    where: { id: message.id },
+    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'category', 'createdAt'],
+    include: [
+      {
+        model: User,
+        as: 'sender',
+        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
+      },
+      {
+        model: Chatroom,
+        as: 'chatroom',
+        include: [
+          {
+            model: Participant,
+            as: 'Participants',
+            include: [
+              {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  });
+
+  io.to(chatroomId).emit('new_message', fullMessage);
+
+  const participants = await Participant.findAll({
+    where: { chatRoomId: chatroomId },
+    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname'] }]
+  });
+
+  const recipients = participants.filter(p => p.user.id !== 10);
+
+  await Promise.all(recipients.map(participant =>
+    MessageReadStatus.create({
+      messageId: message.id,
+      userId: participant.user.id,
+      read: false
+    })
+  ));
+
+  for (const participant of recipients) {
+    const unreadCount = await MessageReadStatus.count({
+      where: { userId: participant.user.id, read: false },
+      include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
+    });
+
+    io.to(`user_${participant.user.id}`).emit('unread_update', {
+      chatroomId,
+      unreadCount
+    });
+
+    const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
+    await Promise.all(subscriptions.map(async (subscription) => {
+      try {
+        const subData = typeof subscription.subscription === 'string'
+          ? JSON.parse(subscription.subscription)
+          : subscription.subscription;
+
+        const fcmToken = subData?.fcmToken;
+        if (fcmToken) {
+          await sendNotification(
+            fcmToken,
+            `Bagong mensahe mula sa admin`,
+            content
+          );
+        }
+      } catch (err) {
+        console.error('❌ Push notification error:', err);
+      }
+    }));
+  }
+
+  return fullMessage;
+};
+
 const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
   const message = await Message.create({ content, senderId, chatroomId, type, category });
 
@@ -448,8 +628,5 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
 
   return fullMessage;
 };
-
-
-
 
 

@@ -512,14 +512,8 @@ exports.guestLogin = async (req, res, io) => {
 
       await createAndEmitMessage({
         content: 
-          `Welcome aboard, ${newUser.user_fname} ${newUser.user_lname}!\n
-          Para mas madali ka naming tawagin sa iyong pangalan at ma-assist nang maayos, pakisagot po ito:\n
-          1. Full Name\n
-          2. Last Name\n
-          3. Email\n
-          4. Phone Number\n
-          5. Mobile Number\n
-          6. FB Messenger Name`,
+          `👋 ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!
+          Bago kita i-connect sa team namin, puwede ko bang malaman ang pangalan mo? 🙂`,
         senderId: 10,
         chatroomId: chatroom.id,
         type: 'text',

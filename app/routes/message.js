@@ -8,6 +8,7 @@ module.exports = (io) => {
     router.get("/:chatroomId", (req, res) => messageController.getMessagesByChatroom(req, res, io));
     router.post("/send-text", (req, res) => messageController.sendTextMessage(req, res, io));
     router.post("/send-automated", (req, res) => messageController.sendBotMessage(req, res, io));
+    router.post("/send-bot-reply", (req, res) => messageController.sendBotReply(req, res, io));
     router.post("/send-file", (req, res) => messageController.sendFileMessage(req, res, io));    
     router.post("/react", (req, res) => messageController.reactToMessage(req, res, io));
 

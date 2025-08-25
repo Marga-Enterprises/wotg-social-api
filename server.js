@@ -169,7 +169,6 @@ io.on("connection", (socket) => {
     });
 
     socket.on('new_message', (msg) => {
-        // console.log('[[[[[[[[[[[[[[[[[[[[[[📨 Received new_message from frontend]]]]]]]]]]]]]]]]]]]]]]', msg);
         io.to(msg.chatroomId).emit('new_message', msg); // echo to others
     });
 
