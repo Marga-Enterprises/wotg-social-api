@@ -545,15 +545,30 @@ exports.guestLogin = async (req, res, io) => {
         ? "pillorajem10@gmail.com"
         : "michael.marga@gmail.com";
 
+    const chatroomWithGuestLink =
+      process.env.NODE_ENV === "development" 
+        ? `http://localhost:3000/chat?chat=${chatroomLoginId}`
+        : `https://community.wotgonline.com/chat?chat=${chatroomLoginId}`;
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: adminEmail,
-      subject: "New Guest Account Created",
-      text:
-        "A new guest account has joined the platform and added to the wotg admin" +
-        `\n\nGuest Name: ${user_fname} ${user_lname}` +
-        `\nEmail: ${email}` +
-        `\n\nPlease ensure to monitor guest activities.`,
+      subject: "🚨 New Guest Account Created",
+
+      text: `
+        A new guest account has joined the platform and has been added to the WOTG Admin chatroom.
+
+        Guest Details:
+        - Name: ${user_fname} ${user_lname}
+        - Email: ${email}
+
+        You can directly view the chatroom here:
+        ${chatroomWithGuestLink}
+
+        Please ensure to monitor guest activities accordingly.
+
+        — WOTG System Notification
+    `.trim()
     };
 
     transporter.sendMail(mailOptions).catch((err) => {

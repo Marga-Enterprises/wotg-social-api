@@ -64,20 +64,19 @@ exports.generateAccessToken = (user) => {
       },
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || '7d' } // Default: 7 days
+    { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || '5y' } // Default: 5 years
   );
 };
 
 
-exports.sendError = (v, data, msg = '', errNo = 400, code = 101, collection = '') => {
+exports.sendError = (v, data, msg = '', errNo = 400, code = 101) => {
   return v.status(errNo).json({
     author: randomAuthor(),
     msg,
     data,
     success: false,
     version: "0.0.1",
-    code,
-    // collection, // Include the collection name in the response
+    code
   });
 };
 
