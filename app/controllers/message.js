@@ -366,15 +366,17 @@ exports.sendBotReply = async (req, res, io) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
   const { message, userId, chatroomId } = req.body;
-
-  console.log('[[[[[[[[[[[[Received bot reply request:]]]]]]]]]]]]', { message, userId, chatroomId });
-
-  const content = message.trim();
+  const content = message.content.trim();
 
   try {
     let botState = await GuestBotState.findOne({ where: { userId } });
 
-    if (!botState || botState.currentStep === 'completed') {
+    if (!botState) {
+      botState = await GuestBotState.create({
+        userId,
+        currentStep: 'awaiting_name'
+      });
+    } else if (botState.currentStep === 'completed') {
       return sendSuccess(res, { status: 'done' }, 'Bot flow is already completed.');
     }
 
@@ -446,94 +448,16 @@ exports.sendBotReply = async (req, res, io) => {
 };
 
 const sendBot = async ({ chatroomId, content, io }) => {
-  const message = await Message.create({
+  return await createAndEmitMessage({
     content,
     senderId: 10,
     chatroomId,
     type: 'text',
-    category: 'automated'
+    category: 'automated',
+    io
   });
-
-  const fullMessage = await Message.findOne({
-    where: { id: message.id },
-    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'category', 'createdAt'],
-    include: [
-      {
-        model: User,
-        as: 'sender',
-        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
-      },
-      {
-        model: Chatroom,
-        as: 'chatroom',
-        include: [
-          {
-            model: Participant,
-            as: 'Participants',
-            include: [
-              {
-                model: User,
-                as: 'user',
-                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  });
-
-  io.to(chatroomId).emit('new_message', fullMessage);
-
-  const participants = await Participant.findAll({
-    where: { chatRoomId: chatroomId },
-    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname'] }]
-  });
-
-  const recipients = participants.filter(p => p.user.id !== 10);
-
-  await Promise.all(recipients.map(participant =>
-    MessageReadStatus.create({
-      messageId: message.id,
-      userId: participant.user.id,
-      read: false
-    })
-  ));
-
-  for (const participant of recipients) {
-    const unreadCount = await MessageReadStatus.count({
-      where: { userId: participant.user.id, read: false },
-      include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
-    });
-
-    io.to(`user_${participant.user.id}`).emit('unread_update', {
-      chatroomId,
-      unreadCount
-    });
-
-    const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
-    await Promise.all(subscriptions.map(async (subscription) => {
-      try {
-        const subData = typeof subscription.subscription === 'string'
-          ? JSON.parse(subscription.subscription)
-          : subscription.subscription;
-
-        const fcmToken = subData?.fcmToken;
-        if (fcmToken) {
-          await sendNotification(
-            fcmToken,
-            `Bagong mensahe mula sa admin`,
-            content
-          );
-        }
-      } catch (err) {
-        console.error('❌ Push notification error:', err);
-      }
-    }));
-  }
-
-  return fullMessage;
 };
+
 
 const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
   const message = await Message.create({ content, senderId, chatroomId, type, category });
