@@ -406,14 +406,14 @@ exports.sendBotReply = async (req, res, io) => {
         break;
 
       case 'awaiting_mobile':
-        if (/^(09|\+639)\d{9}$/.test(content)) {
-          botState.mobile = content;
-          botState.currentStep = 'awaiting_fb_name';
-          await botState.save();
-          botReply = `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`;
-        } else {
-          botReply = `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`;
-        }
+          if (/^\+?[1-9]\d{6,14}$/.test(content)) {
+            botState.mobile = content;
+            botState.currentStep = 'awaiting_fb_name';
+            await botState.save();
+            botReply = `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`;
+          } else {
+            botReply = `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`;
+          }
         break;
 
       case 'awaiting_fb_name':
