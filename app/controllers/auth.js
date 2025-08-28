@@ -444,86 +444,60 @@ exports.guestLogin = async (req, res, io) => {
 
     const accessToken = generateAccessToken(newUser);
     let chatroomLoginId = 0;
-    let participants = [newUser.id, 10];
+    let participants = [newUser.id, 10, 345, 348];
 
-    // Check for existing private chatroom with this guest and admin (userId 10)
-    const existingChatroom = await Participant.findAll({
-      where: { userId: participants },
-      attributes: ['chatRoomId'],
+    const chatroomName = "Welcome Team";
+
+    const chatroom = await Chatroom.create({ name: chatroomName, type: 'group' });
+
+    const participantsData = participants.map((userId) => ({
+      userId,
+      chatRoomId: chatroom.id,
+    }));
+
+    await Participant.bulkCreate(participantsData);
+
+    const chatroomParticipants = await Participant.findAll({
+      where: { chatRoomId: chatroom.id },
       include: [
         {
-          model: Chatroom,
-          attributes: [],
-          where: { type: 'private' },
+          model: User,
+          as: 'user',
+          attributes: ['id', 'user_fname', 'user_lname', 'email'],
         },
       ],
-      group: ['chatRoomId'],
-      having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`),
+      attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
     });
 
-    if (existingChatroom.length <= 0) {
-      const users = await User.findAll({
-        where: { id: participants },
-        attributes: ['user_fname', 'user_lname'],
-      });
+    const chatroomWithParticipants = {
+      id: chatroom.id,
+      name: chatroom.name,
+      type: 'group',
+      createdAt: chatroom.createdAt,
+      updatedAt: chatroom.updatedAt,
+      messages: [],
+      Participants: chatroomParticipants,
+      unreadCount: 0,
+      hasUnread: false,
+    };
 
-      const chatroomName = users
-        .map((user) => `${user.user_fname} ${user.user_lname}`)
-        .join(', ');
+    chatroomLoginId = chatroom.id;
 
-      const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
-
-      const participantsData = participants.map((userId) => ({
-        userId,
-        chatRoomId: chatroom.id,
-      }));
-
-      await Participant.bulkCreate(participantsData);
-
-      const chatroomParticipants = await Participant.findAll({
-        where: { chatRoomId: chatroom.id },
-        include: [
-          {
-            model: User,
-            as: 'user',
-            attributes: ['id', 'user_fname', 'user_lname', 'email'],
-          },
-        ],
-        attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
-      });
-
-      const chatroomWithParticipants = {
-        id: chatroom.id,
-        name: chatroom.name,
-        type: 'private',
-        createdAt: chatroom.createdAt,
-        updatedAt: chatroom.updatedAt,
-        messages: [],
-        Participants: chatroomParticipants,
-        unreadCount: 0,
-        hasUnread: false,
-      };
-
-      chatroomLoginId = chatroom.id;
-
-      if (io) {
-        io.emit('new_chatroom', chatroomWithParticipants);
-      }
-
-      await createAndEmitMessage({
-        content: 
-          `👋 ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!  
-          Bago kita i-connect sa team, puwede mo bang i-reply ang **first name** mo?  
-          Halimbawa: *Juan* o *Juan Miguel* 😊`,
-        senderId: 10,
-        chatroomId: chatroom.id,
-        type: 'text',
-        category: 'automated',
-        io,
-      });
-    } else {
-      chatroomLoginId = existingChatroom[0].chatRoomId;
+    if (io) {
+      io.emit('new_chatroom', chatroomWithParticipants);
     }
+
+    await createAndEmitMessage({
+      content: 
+        `👋 ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!  
+        Bago kita i-connect sa team, puwede mo bang i-reply ang **first name** mo?  
+        Halimbawa: *Juan* o *Juan Miguel* 😊`,
+      senderId: 10,
+      chatroomId: chatroom.id,
+      type: 'text',
+      category: 'automated',
+      io,
+    });
 
     // Send success to the user immediately
     sendSuccess(
