@@ -512,8 +512,9 @@ exports.guestLogin = async (req, res, io) => {
 
       await createAndEmitMessage({
         content: 
-          `👋 ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!
-          Bago kita i-connect sa team namin, puwede ko bang malaman ang pangalan mo? 🙂`,
+          `👋 ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!  
+          Bago kita i-connect sa team, puwede mo bang i-reply ang **first name** mo?  
+          Halimbawa: *Juan* o *Juan Miguel* 😊`,
         senderId: 10,
         chatroomId: chatroom.id,
         type: 'text',

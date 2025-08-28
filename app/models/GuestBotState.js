@@ -20,7 +20,11 @@ GuestBotState.init({
     allowNull: false,
     defaultValue: 'awaiting_name'
   },
-  fullName: {
+  firstName: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  lastName: {
     type: DataTypes.STRING(100),
     allowNull: true
   },

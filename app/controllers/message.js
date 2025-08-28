@@ -9,7 +9,7 @@ const User = require('../models/User'); // Import User model
 
 const { uploadFileToSpaces } = require('./spaceUploader');
 const uploadMemory = require('./uploadMemory');
-
+const bcrypt = require('bcryptjs');
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
 const {
@@ -18,6 +18,7 @@ const {
     getToken,
     sendErrorUnauthorized,
     decodeToken,
+    generateAccessToken,
     processImageToSpace
 } = require("../../utils/methods");
 
@@ -363,6 +364,8 @@ exports.reactToMessage = async (req, res, io) => {
 
 exports.sendBotReply = async (req, res, io) => {
   const token = getToken(req.headers);
+  let triggerRefresh = false;
+  let accessToken = null;
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
   const { message, userId, chatroomId } = req.body;
@@ -370,6 +373,7 @@ exports.sendBotReply = async (req, res, io) => {
 
   try {
     let botState = await GuestBotState.findOne({ where: { userId } });
+    let user; // Declare globally here 👈
 
     if (!botState) {
       botState = await GuestBotState.create({
@@ -385,43 +389,81 @@ exports.sendBotReply = async (req, res, io) => {
     switch (botState.currentStep) {
       case 'awaiting_name':
         if (/^[a-zA-Z\s]{2,}$/.test(content)) {
-          botState.fullName = content;
+          botState.firstName = content.trim();
+          botState.currentStep = 'awaiting_lname';
+          await botState.save();
+          botReply = `Salamat, ${content.trim()}! 😊\nNgayon naman, ano ang **apelyido** mo? Halimbawa: *Dela Cruz*`;
+        } else {
+          botReply = `Hehe, paki-type ng iyong **first name** muna. Halimbawa: Juan 😊`;
+        }
+        break;
+
+      case 'awaiting_lname':
+        if (/^[a-zA-Z\s]{2,}$/.test(content)) {
+          botState.lastName = content.trim();
           botState.currentStep = 'awaiting_email';
           await botState.save();
-          botReply = `Salamat, ${content}! 🙌\nMasaya kaming makilala ka.\nAno naman ang iyong email address para maipadala namin ang mga updates at resources sa’yo?`;
+          botReply = `Ayos! 🙌 Salamat, ${botState.firstName} ${botState.lastName}.\nNgayon naman, puwede ko bang malaman ang iyong **email address**?\nHalimbawa: juandelacruz@email.com 📧`;
         } else {
-          botReply = `Hehe, puwede ko bang malaman ang **buong pangalan mo**? Halimbawa: Juan Dela Cruz 😊`;
+          botReply = `Sige lang, paki-type ng iyong **apelyido**. Halimbawa: Dela Cruz 😊`;
         }
         break;
 
       case 'awaiting_email':
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content)) {
-          botState.email = content;
+          user = await User.findOne({ where: { email: content.trim() } }); // 👈 Check email existence
+          if (user) {
+            botReply = `Mukhang naka-register na ang email na ito. Maaari mo bang gamitin ang ibang email address? 📧`;
+            break;
+          }
+
+          botState.email = content.trim();
           botState.currentStep = 'awaiting_mobile';
           await botState.save();
-          botReply = `Nice! ✅\nAno naman ang iyong **mobile number**, para makapagpadala kami ng reminders at mabilis na updates? (Promise, walang spam 😇)`;
+          botReply = `Nice! ✅\nPaki-share naman ng iyong **mobile number** para makapagpadala kami ng reminders at updates nang mabilis. (Don’t worry, no spam 😇)\nHalimbawa: +639171234567 o 09171234567 📱`;
         } else {
           botReply = `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`;
         }
         break;
 
       case 'awaiting_mobile':
-          if (/^\+?[1-9]\d{6,14}$/.test(content)) {
-            botState.mobile = content;
-            botState.currentStep = 'awaiting_fb_name';
-            await botState.save();
-            botReply = `Perfect 👍\nLast na lang—ano ang iyong **Facebook Messenger name**, para madali kang mahanap ng volunteer natin at makausap ka nang personal?`;
-          } else {
-            botReply = `Parang hindi valid number ‘yan. Puwede mo bang i-check at i-send ulit? 📱`;
-          }
+        if (/^(?:\+?\d{1,4}|0)\d{9,14}$/.test(content)) {
+          botState.mobile = content.trim();
+          botState.currentStep = 'awaiting_fb_name';
+          await botState.save();
+          botReply = `Perfect! 👍\nLast na lang—paki-send ng iyong **Facebook Messenger name**, para madali kang mahanap at makausap ng volunteer natin.\nHalimbawa: "Juan Miguel Dela Cruz" o kaya "JM Cruz" 😊`;
+        } else {
+          botReply = `Parang hindi valid number ‘yan. Subukang muli. Halimbawa: 09171234567 o +639171234567 📱`;
+        }
         break;
 
       case 'awaiting_fb_name':
         if (content.length >= 2) {
-          botState.fbName = content;
+          botState.fbName = content.trim();
           botState.currentStep = 'completed';
           await botState.save();
-          botReply = `🎉 Salamat, ${botState.fullName}!\nKumpleto na. May volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`;
+
+          botReply = `🎉 Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`;
+
+          // Update User once complete
+          user = await User.findOne({ where: { id: userId } }); // Re-fetch or reuse
+          if (user && user.user_role === 'guest') {
+            const hashedPassword = await bcrypt.hash(botState.mobile, 10);
+            await user.update({
+              user_role: 'member',
+              user_fname: botState.firstName,
+              user_lname: botState.lastName,
+              user_mobile: botState.mobile,
+              email: botState.email,
+              password: hashedPassword,
+              user_social_media: botState.fbName
+            });
+
+
+            // Generate new access token
+            accessToken = generateAccessToken(user);
+            triggerRefresh = true;
+          }
         } else {
           botReply = `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin. 😊`;
         }
@@ -432,20 +474,16 @@ exports.sendBotReply = async (req, res, io) => {
         break;
     }
 
-    // Emit bot reply to the chatroom
-    await sendBot({
-      chatroomId,
-      content: botReply,
-      io,
-    });
+    // Send the message to chatroom
+    await sendBot({ chatroomId, content: botReply, io });
 
-    return sendSuccess(res, { step: botState.currentStep, reply: botReply }, 'Bot reply sent.');
-
+    return sendSuccess(res, { step: botState.currentStep, reply: botReply, triggerRefresh, user, accessToken }, 'Bot reply sent.');
   } catch (error) {
     console.error('❌ sendBotReply error:', error);
     return sendError(res, error, 'Failed to send bot reply.');
   }
 };
+
 
 const sendBot = async ({ chatroomId, content, io }) => {
   return await createAndEmitMessage({
