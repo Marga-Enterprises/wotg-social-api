@@ -420,7 +420,7 @@ exports.sendBotReply = async (req, res, io) => {
           botState.email = content.trim();
           botState.currentStep = 'awaiting_mobile';
           await botState.save();
-          botReply = `Nice! ✅\nPaki-share naman ng iyong **mobile number** para makapagpadala kami ng reminders at updates nang mabilis. (Don’t worry, no spam 😇)\nHalimbawa: +639171234567 o 09171234567 📱`;
+          botReply = `Paki-share naman ng iyong **mobile number** para makapagpadala kami ng reminders at updates nang mabilis. (Don’t worry, no spam 😇)\nHalimbawa: +639171234567 o 09171234567 📱`;
         } else {
           botReply = `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`;
         }
