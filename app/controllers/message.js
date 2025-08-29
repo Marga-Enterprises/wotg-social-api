@@ -10,6 +10,7 @@ const User = require('../models/User'); // Import User model
 const { uploadFileToSpaces } = require('./spaceUploader');
 const uploadMemory = require('./uploadMemory');
 const bcrypt = require('bcryptjs');
+const nodemailer = require("nodemailer");
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
 const {
@@ -21,6 +22,16 @@ const {
     generateAccessToken,
     processImageToSpace
 } = require("../../utils/methods");
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.hostinger.com", // Hostinger's SMTP server
+  port: 465, // Use 465 for SSL, or 587 for STARTTLS
+  secure: true, // True for 465, false for 587
+  auth: {
+    user: process.env.EMAIL_USER, // Your Hostinger email (e.g., no-reply@yourdomain.com)
+    pass: process.env.EMAIL_PASS, // Your Hostinger email password
+  },
+});
 
 exports.getMessagesByChatroom = async (req, res, io) => {
     let token = getToken(req.headers); // Get token from request headers
@@ -443,7 +454,7 @@ exports.sendBotReply = async (req, res, io) => {
           botState.currentStep = 'completed';
           await botState.save();
 
-          botReply = `🎉 Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.\nHabang hinihintay mo, eto muna ang isang maikling mensahe para sa’yo 👉 [insert link/video]`;
+          botReply = `🎉 Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.`;
 
           // Update User once complete
           user = await User.findOne({ where: { id: userId } }); // Re-fetch or reuse
@@ -497,48 +508,61 @@ const sendBot = async ({ chatroomId, content, io }) => {
 };
 
 
+
+
 const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
+  // 1. Save the message
   const message = await Message.create({ content, senderId, chatroomId, type, category });
 
+  // 2. Fetch full message with sender and participants
   const fullMessage = await Message.findOne({
     where: { id: message.id },
     attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'category', 'createdAt'],
     include: [
-        {
-            model: User,
-            as: 'sender',
-            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role', 'user_role'], 
-        },
-        {
-            model: Chatroom,
-            as: 'chatroom',
+      {
+        model: User,
+        as: 'sender',
+        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role']
+      },
+      {
+        model: Chatroom,
+        as: 'chatroom',
+        include: [
+          {
+            model: Participant,
+            as: 'Participants',
             include: [
-                {
-                    model: Participant,
-                    as: 'Participants',
-                    include: [
-                        {
-                            model: User,
-                            as: 'user',
-                            attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'], // Fetch only the necessary fields
-                        }
-                    ]
-                }
+              {
+                model: User,
+                as: 'user',
+                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role', 'email']
+              }
             ]
-        }
+          }
+        ]
+      }
     ]
   });
 
+  // 3. Emit to socket room
   io.to(chatroomId).emit('new_message', fullMessage);
 
+  // 4. Get all chat participants excluding sender
   const participants = await Participant.findAll({
     where: { chatRoomId: chatroomId },
-    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'] }]
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'email']
+      }
+    ]
   });
 
-  const filteredParticipants = participants.filter(p => p.user.id !== senderId);
+  const recipients = participants.filter(p => p.user.id !== senderId);
 
-  await Promise.all(filteredParticipants.map(participant =>
+  // 5. Save unread flags
+  await Promise.all(recipients.map(participant =>
     MessageReadStatus.create({
       messageId: message.id,
       userId: participant.user.id,
@@ -546,11 +570,18 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
     })
   ));
 
-  // Emit unread count
-  for (const participant of filteredParticipants) {
+  // 6. Emit unread count to each user
+  for (const participant of recipients) {
     const unreadCount = await MessageReadStatus.count({
       where: { userId: participant.user.id, read: false },
-      include: [{ model: Message, as: 'message', attributes: [], where: { chatroomId } }]
+      include: [
+        {
+          model: Message,
+          as: 'message',
+          attributes: [],
+          where: { chatroomId }
+        }
+      ]
     });
 
     io.to(`user_${participant.user.id}`).emit('unread_update', {
@@ -559,8 +590,8 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
     });
   }
 
-  // Send push notifications
-  await Promise.all(filteredParticipants.map(async (participant) => {
+  // 7. Send push notifications
+  await Promise.all(recipients.map(async (participant) => {
     const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
 
     await Promise.all(subscriptions.map(async (subscription) => {
@@ -583,7 +614,51 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
     }));
   }));
 
+  // 8. Send email notifications
+  if (recipients.length <= 4) {
+    await Promise.all(recipients.map(async (participant) => {
+      const recipient = participant.user;
+      const email = recipient.email;
+      if (!email) return;
+
+      const senderName = `${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`;
+      const preview = fullMessage.type === 'file'
+        ? '[Image file sent]'
+        : (content.length > 100 ? content.slice(0, 100) + '…' : content);
+
+      // Generate dynamic guest chatroom link
+      const chatroomWithGuestLink =
+        process.env.NODE_ENV === "development"
+          ? `http://localhost:3000/chat?chat=${chatroomId}`
+          : `https://community.wotgonline.com/chat?chat=${chatroomId}`;
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: `📩 Bagong mensahe mula kay ${senderName}`,
+        text: `
+          Hi ${recipient.user_fname},
+
+          May bagong mensahe ka mula kay ${senderName} sa iyong Word on the Go chatroom:
+
+          "${preview}"
+
+          Mag-reply na ngayon 👉 ${chatroomWithGuestLink}
+
+          — WOTG System Notification
+        `.trim()
+      };
+
+      transporter.sendMail(mailOptions).catch((err) => {
+        console.error('❌ Email send error:', err);
+      });
+    }));
+  } else {
+    console.log(`ℹ️ Email notification skipped (recipients > 4): ${recipients.length} users`);
+  }
+
   return fullMessage;
 };
+
 
 
