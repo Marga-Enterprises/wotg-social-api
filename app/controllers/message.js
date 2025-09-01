@@ -382,6 +382,10 @@ exports.sendBotReply = async (req, res, io) => {
   const { message, userId, chatroomId } = req.body;
   const content = message.content.trim();
 
+  const menupageLink = process.env.NODE_ENV === "development"
+    ? `http://localhost:3000/`
+    : `https://community.wotgonline.com/`;
+
   try {
     let botState = await GuestBotState.findOne({ where: { userId } });
     let user; // Declare globally here 👈
@@ -454,7 +458,7 @@ exports.sendBotReply = async (req, res, io) => {
           botState.currentStep = 'completed';
           await botState.save();
 
-          botReply = `🎉 Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.`;
+          botReply = `Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\n➡️ Maaari mong bisitahin ang community page dito: ${menupageLink}\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.`
 
           // Update User once complete
           user = await User.findOne({ where: { id: userId } }); // Re-fetch or reuse
@@ -469,7 +473,6 @@ exports.sendBotReply = async (req, res, io) => {
               password: hashedPassword,
               user_social_media: botState.fbName
             });
-
 
             // Generate new access token
             accessToken = generateAccessToken(user);
