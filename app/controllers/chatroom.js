@@ -5,6 +5,12 @@ const User = require('../models/User');
 const Message = require('../models/Message'); 
 const MessageReadStatus = require('../models/MessageReadStatus'); 
 
+// redis 
+const redisClient = require("../../config/redis");
+
+// clear cache
+const { clearChatroomsCache } = require("../../utils/clearBlogCache");
+
 const uploadMemory = require('./uploadMemory');
 const { uploadFileToSpaces } = require('./spaceUploader');
 
@@ -37,6 +43,14 @@ exports.getAllChatrooms = async (req, res) => {
         const { search } = req.query; // Extract search query parameter
 
         try {
+            // Step 0: check if its cached
+            const cacheKey = `chatrooms_user_${userDecoded.user.id}_search_${search || ''}`;
+            const cachedData = await redisClient.get(cacheKey);
+
+            if (cachedData) {
+                return sendSuccess(res, JSON.parse(cachedData));
+            }
+
             // Step 1: Fetch all chatrooms where the logged-in user is a participant
             const chatrooms = await Chatroom.findAll({
                 include: [
@@ -157,6 +171,9 @@ exports.getAllChatrooms = async (req, res) => {
                 return dateB - dateA; // Sort in descending order
             });
 
+            // Step 6: Cache the result in Redis for 30 minutes
+            await redisClient.setEx(cacheKey, 1800, JSON.stringify(chatroomsWithParticipants));
+
             // Return the chatrooms with unread counts and hasUnread
             return sendSuccess(res, chatroomsWithParticipants);
         } catch (error) {
@@ -166,8 +183,6 @@ exports.getAllChatrooms = async (req, res) => {
         return sendErrorUnauthorized(res, "", "Please login first.");
     }
 };
-
-
 
 // Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
@@ -262,6 +277,14 @@ exports.createChatroom = async (req, res, io) => {
                 io.emit('new_chatroom', chatroomWithParticipants);
             }
 
+            // clear cache for the participants as well as the creator
+            const userDecoded = decodeToken(token);
+            const affectedUserIds = new Set([...participants, userDecoded.user.id]); // Use Set to avoid duplicates
+
+            for (const userId of affectedUserIds) {
+                await clearChatroomsCache(userId);
+            }
+
             // Return the success response using sendSuccess, chatroom data will be passed directly
             return sendSuccess(res, chatroomWithParticipants); // Automatically handles the JSON response
         } catch (error) {
@@ -306,7 +329,7 @@ exports.addParticipants = async (req, res, io) => {
                 attributes: ['id', 'user_fname', 'user_lname', 'email', 'user_profile_picture'],
             });
 
-            const newParticipants = await Participant.bulkCreate(
+            await Participant.bulkCreate(
                 users.map(user => ({
                     chatRoomId: chatroomId,
                     userId: user.id,
@@ -340,6 +363,12 @@ exports.addParticipants = async (req, res, io) => {
 
             if (io) {
                 io.emit('new_participants', chatroomWithParticipants);
+            }
+
+            // Clear chatroom cache for new participants and the user who added them
+            const affectedUserIds = [...newUserIds, userDecoded.user.id];
+            for (const userId of affectedUserIds) {
+                await clearChatroomCache(userId);
             }
 
             return sendSuccess(res, chatroomWithParticipants, 'You are added to the group chat.');
@@ -412,6 +441,16 @@ exports.updateChatroom = async (req, res, io) => {
             // Emit real-time update event
             if (io) {
                 io.emit("chatroom_updated", updatedChatroom);
+            }
+
+            // Clear chatroom cache for all participants
+            const participants = await Participant.findAll({
+                where: { chatRoomId: chatroomId },
+                attributes: ['userId'],
+            });
+
+            for (const participant of participants) {
+                await clearChatroomsCache(participant.userId);
             }
 
             return sendSuccess(res, updatedChatroom, "Chatroom updated successfully.");

@@ -283,3 +283,23 @@ exports.clearNotificationsCache = async (userId) => {
     console.error("❌ Error clearing notifications cache:", error);
   };
 };
+
+exports.clearChatroomsCache = async (userId) => {
+  try {
+    console.log("🧹 Clearing chatrooms cache...");
+
+    const pattern = `chatrooms_user_${userId ? userId : '*'}_search_*`;
+    const keys = await redisClient.keys(pattern);
+
+    if (keys.length > 0) {
+      await redisClient.del(...keys); // Spread the array
+      console.log(`🗑️ Cleared ${keys.length} chatrooms cache entries.`);
+    } else {
+      console.log("ℹ️ No matching chatrooms cache keys found.");
+    }
+
+    console.log("✅ Chatrooms cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing chatrooms cache:", error);
+  }
+};
