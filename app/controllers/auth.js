@@ -444,7 +444,7 @@ exports.guestLogin = async (req, res, io) => {
 
     const accessToken = generateAccessToken(newUser);
     let chatroomLoginId = 0;
-    let participants = [newUser.id, 10, 345, 348];
+    let participants = [newUser.id, 10, 345, 348, 251];
 
     const chatroomName = "Welcome Team";
 
