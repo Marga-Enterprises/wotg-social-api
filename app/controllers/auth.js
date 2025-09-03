@@ -20,6 +20,9 @@ const Subscription = require('../models/Subscription'); // Import Message model
 const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
 
+// clear cache
+const { clearChatroomsCache } = require("../../utils/clearBlogCache");
+
 // import sequelize instance
 const sequelize = require('../../config/db');
 
@@ -483,6 +486,11 @@ exports.guestLogin = async (req, res, io) => {
 
     chatroomLoginId = chatroom.id;
 
+    // Clear chatrooms for the participants
+    for (const userId of participants) {
+      await clearChatroomsCache(userId);
+    }
+
     if (io) {
       io.emit('new_chatroom', chatroomWithParticipants);
     }
@@ -509,21 +517,26 @@ exports.guestLogin = async (req, res, io) => {
     );
 
     // Notify admin via email (async)
-    const adminEmail =
+    const adminEmails =
       process.env.NODE_ENV === "development"
-        ? "pillorajem10@gmail.com"
-        : "michael.marga@gmail.com";
+        ? ["pillorajem10@gmail.com"]
+        : [
+            "michael.marga@gmail.com",
+            "lamatamarvin83@gmail.com",
+            "engrjoelmlusung@gmail.com",
+            "donmarper1975@gmail.com",
+          ];
 
     const chatroomWithGuestLink =
       process.env.NODE_ENV === "development" 
         ? `http://localhost:3000/chat?chat=${chatroomLoginId}`
         : `https://community.wotgonline.com/chat?chat=${chatroomLoginId}`;
 
-    const mailOptions = {
+    // 🔹 Define shared mail content
+    const mailOptions = (to) => ({
       from: process.env.EMAIL_USER,
-      to: adminEmail,
+      to, // looped recipient
       subject: "🚨 New Guest Account Created",
-
       text: `
         A new guest account has joined the platform and has been added to the WOTG Admin chatroom.
 
@@ -537,12 +550,16 @@ exports.guestLogin = async (req, res, io) => {
         Please ensure to monitor guest activities accordingly.
 
         — WOTG System Notification
-    `.trim()
-    };
-
-    transporter.sendMail(mailOptions).catch((err) => {
-      console.error("Email send error:", err);
+      `.trim(),
     });
+
+
+  // 🔹 Loop and send to each admin
+  for (const admin of adminEmails) {
+    transporter.sendMail(mailOptions(admin)).catch((err) => {
+      console.error(`Email send error to ${admin}:`, err);
+    });
+  }
 
   } catch (err) {
     console.error("Guest Login Error:", err);
