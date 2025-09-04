@@ -23,6 +23,11 @@ Chatroom.init({
     chatroom_photo: {
         type: DataTypes.STRING(255), // Stores file name or full URL
         allowNull: true, // Optional field
+    },
+    welcome_chat: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
     }
 }, {
     sequelize,

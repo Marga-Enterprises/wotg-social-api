@@ -449,9 +449,9 @@ exports.guestLogin = async (req, res, io) => {
     let chatroomLoginId = 0;
     let participants = [newUser.id, 10, 345, 348, 251];
 
-    const chatroomName = "Welcome Team";
+    const chatroomName = `Welcome Chat - ${newUser.user_fname} ${newUser.user_lname}`;
 
-    const chatroom = await Chatroom.create({ name: chatroomName, type: 'group' });
+    const chatroom = await Chatroom.create({ name: chatroomName, type: 'group', welcome_chat: true });
 
     const participantsData = participants.map((userId) => ({
       userId,
