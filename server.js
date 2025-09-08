@@ -114,6 +114,11 @@ io.on("connection", (socket) => {
         updateViewerCount(io);
     });
 
+    socket.on("get_online_users", () => {
+        socket.emit("online_users", onlineUsers);
+    });
+
+
     // Handle user disconnect (when closing tab, refresh, or lost connection)
     socket.on("add_user_id_to_online_users", (user) => {
         if (!user || !user.email) return; // Ensure user is authenticated
