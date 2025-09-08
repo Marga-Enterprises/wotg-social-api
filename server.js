@@ -58,7 +58,7 @@ app.use("/users", userRoutes);
 app.use("/chatrooms", chatroomRoutes(io));
 app.use("/messages", messageRoutes(io));
 app.use("/subscriptions", subscriptionRoutes);
-app.use("/worship", worshipRoutes); // 🔥 Worship API routes
+app.use("/worship", worshipRoutes(io)); // 🔥 Worship API routes
 app.use("/blogs", blogRoutes);
 app.use("/bibles", bibleRoutes);
 app.use("/journals", journalRoutes);

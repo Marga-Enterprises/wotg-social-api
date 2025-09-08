@@ -1,10 +1,18 @@
 const express = require("express");
-const worshipController = require("../controllers/worship");
 
-const router = express.Router();
+module.exports = (io) => {
+    const router = express.Router();
+    const worshipController = require("../controllers/worship");
 
-// Worship Routes (Protected)
-router.get("/", worshipController.getLatestWorship);
-router.post("/", worshipController.updateLatestWorship);
+    // Worship Routes (Protected)
+    router.get("/", (req, res) => worshipController.getLatestWorship(req, res, io));
+    router.post("/", (req, res) => worshipController.updateLatestWorship(req, res, io));
 
-module.exports = router;
+    return router;
+};
+
+
+
+
+
+
