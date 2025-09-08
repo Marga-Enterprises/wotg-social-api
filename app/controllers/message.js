@@ -407,9 +407,9 @@ exports.sendBotReply = async (req, res, io) => {
           botState.firstName = content.trim();
           botState.currentStep = 'awaiting_lname';
           await botState.save();
-          botReply = `Salamat, ${content.trim()}! 😊\nNgayon naman, ano ang **apelyido** mo? Halimbawa: *Dela Cruz*`;
+          botReply = `Salamat, ${content.trim()}!\nNgayon naman, ano ang **apelyido** mo? Halimbawa: *Dela Cruz*`;
         } else {
-          botReply = `Hehe, paki-type ng iyong **first name** muna. Halimbawa: Juan 😊`;
+          botReply = `Hehe, paki-type ng iyong **first name** muna. Halimbawa: Juan`;
         }
         break;
 
@@ -418,9 +418,9 @@ exports.sendBotReply = async (req, res, io) => {
           botState.lastName = content.trim();
           botState.currentStep = 'awaiting_email';
           await botState.save();
-          botReply = `Ayos! 🙌 Salamat, ${botState.firstName} ${botState.lastName}.\nNgayon naman, puwede ko bang malaman ang iyong **email address**?\nHalimbawa: juandelacruz@email.com 📧`;
+          botReply = `Ayos! Salamat, ${botState.firstName} ${botState.lastName}.\nNgayon naman, puwede ko bang malaman ang iyong **email address**?\nHalimbawa: juandelacruz@email.com 📧`;
         } else {
-          botReply = `Sige lang, paki-type ng iyong **apelyido**. Halimbawa: Dela Cruz 😊`;
+          botReply = `Sige lang, paki-type ng iyong **apelyido**. Halimbawa: Dela Cruz`;
         }
         break;
 
@@ -428,16 +428,16 @@ exports.sendBotReply = async (req, res, io) => {
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content)) {
           user = await User.findOne({ where: { email: content.trim() } }); // 👈 Check email existence
           if (user) {
-            botReply = `Mukhang naka-register na ang email na ito. Maaari mo bang gamitin ang ibang email address? 📧`;
+            botReply = `Mukhang naka-register na ang email na ito. Maaari mo bang gamitin ang ibang email address?`;
             break;
           }
 
           botState.email = content.trim();
           botState.currentStep = 'awaiting_mobile';
           await botState.save();
-          botReply = `Paki-share naman ng iyong **mobile number** para makapagpadala kami ng reminders at updates nang mabilis. (Don’t worry, no spam 😇)\nHalimbawa: +639171234567 o 09171234567 📱`;
+          botReply = `Paki-share naman ng iyong **mobile number** para makapagpadala kami ng reminders at updates nang mabilis. (Don’t worry, no spam)\nHalimbawa: +639171234567 o 09171234567 📱`;
         } else {
-          botReply = `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit? 📧`;
+          botReply = `Hmm, parang hindi valid email ‘yan. Puwede mo bang i-type ulit`;
         }
         break;
 
@@ -446,7 +446,7 @@ exports.sendBotReply = async (req, res, io) => {
           botState.mobile = content.trim();
           botState.currentStep = 'awaiting_fb_name';
           await botState.save();
-          botReply = `Perfect! 👍\nLast na lang—paki-send ng iyong **Facebook Messenger name**, para madali kang mahanap at makausap ng volunteer natin.\nHalimbawa: "Juan Miguel Dela Cruz" o kaya "JM Cruz" 😊`;
+          botReply = `Perfect! \nLast na lang—paki-send ng iyong **Facebook Messenger name**, para madali kang mahanap at makausap ng volunteer natin.\nHalimbawa: "Juan Miguel Dela Cruz" o kaya "JM Cruz"`;
         } else {
           botReply = `Parang hindi valid number ‘yan. Subukang muli. Halimbawa: 09171234567 o +639171234567 📱`;
         }
@@ -458,7 +458,7 @@ exports.sendBotReply = async (req, res, io) => {
           botState.currentStep = 'completed';
           await botState.save();
 
-          botReply = `Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. ✅\n\nNarito ang iyong mga detalye:\n📧 **Email:** ${botState.email}\n🔐 **Password:** ang inilagay mong mobile number (${botState.mobile})\n\n➡️ Maaari mong bisitahin ang community page dito: ${menupageLink}\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.`
+          botReply = `Salamat, ${botState.firstName} ${botState.lastName}!\nKumpleto na ang iyong registration. \n\nNarito ang iyong mga detalye:\n **Email:** ${botState.email}\n **Password:** ang inilagay mong mobile number (${botState.mobile})\n\n Maaari mong bisitahin ang community page dito: ${menupageLink}\n\nMay volunteer na lalapit sa’yo dito para makausap ka at i-guide sa susunod na steps.`
 
           // Update User once complete
           user = await User.findOne({ where: { id: userId } }); // Re-fetch or reuse
@@ -479,12 +479,12 @@ exports.sendBotReply = async (req, res, io) => {
             triggerRefresh = true;
           }
         } else {
-          botReply = `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin. 😊`;
+          botReply = `Sige lang, paki-send ng **Messenger name** mo para ma-contact ka namin.`;
         }
         break;
 
       default:
-        botReply = `⚠️ May konting aberya. Subukan mong i-refresh o i-type ulit.`;
+        botReply = `May konting aberya. Subukan mong i-refresh o i-type ulit.`;
         break;
     }
 
