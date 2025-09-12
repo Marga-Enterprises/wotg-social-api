@@ -27,7 +27,10 @@ exports.list = async (req, res) => {
     }
 
     const decodedToken = decodeToken(token);
-    const userRole = decodedToken.user.user_role;
+
+    // console.log("[[[[[[[[[Decoded Token:]]]]]]]]]", decodedToken);
+
+    const userRole = decodedToken.user_role;
 
     try {
         // Get current date in Manila timezone
@@ -121,7 +124,7 @@ exports.getById = async (req, res) => {
 
         // ✅ Decode Token to Check User Role
         const decodedToken = decodeToken(token);
-        const userRole = decodedToken.user.user_role;
+        const userRole = decodedToken.user_role;
 
         // ✅ Get the Current Date-Time in Asia/Manila (full timestamp)
         const now = moment().tz("Asia/Manila").format("YYYY-MM-DD HH:mm:ss");
@@ -213,7 +216,7 @@ exports.deleteVideo = async (req, res) => {
 
     const decodedToken = decodeToken(token);
     const userId = decodedToken.user.id; // ✅ Extract logged-in user ID
-    const userRole = decodedToken.user.user_role; // ✅ Extract user role
+    const userRole = decodedToken.user_role; // ✅ Extract user role
 
     const { id } = req.params; // Blog ID from request params
 
