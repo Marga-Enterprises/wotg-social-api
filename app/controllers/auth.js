@@ -447,7 +447,7 @@ exports.guestLogin = async (req, res, io) => {
 
     const accessToken = generateAccessToken(newUser);
     let chatroomLoginId = 0;
-    let participants = [newUser.id, 10, 345, 348, 251];
+    let participants = [newUser.id, 10, 345, 348, 251, 49];
 
     const chatroomName = `Welcome Chat - ${newUser.user_fname} ${newUser.user_lname}`;
 
