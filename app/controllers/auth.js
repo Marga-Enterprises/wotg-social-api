@@ -498,9 +498,11 @@ exports.guestLogin = async (req, res, io) => {
 
     await createAndEmitMessage({
       content: 
-        `Hi, ${newUser.user_fname} ${newUser.user_lname}! Welcome sa Word on the Go!  
-        Bago kita i-connect sa team, puwede mo bang i-reply ang **first name** mo?  
-        Halimbawa: *Juan* o *Juan Miguel*`,
+        `Hello kapatid! Maraming salamat sa iyong pagbisita sa ating Word on the Go (WOTG) app.
+         Dito ay makikita mo ang iba’t ibang features gaya ng daily devotions, Bible, journal, community feeds, at marami pang iba. Maaari ka ring makipag-ugnayan sa amin dito mismo.
+
+         Bago kita ma-connect sa ating team, maaari ko bang malaman ang iyong first name?
+         Halimbawa: Juan o Juan Miguel 😊`,
       senderId: 10,
       chatroomId: chatroom.id,
       type: 'text',
@@ -526,6 +528,7 @@ exports.guestLogin = async (req, res, io) => {
             "lamatamarvin83@gmail.com",
             "engrjoelmlusung@gmail.com",
             "donmarper1975@gmail.com",
+            "pillorajem10@gmail.com"
           ];
 
     const chatroomWithGuestLink =
