@@ -11,15 +11,17 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${PORT}
-      - DB_HOST=${DB_HOST}
+      - DB_HOST=db                # 👈 use service name "db"
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_URL=redis://redis:6379  # 👈 use service name "redis"
       - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - db
       - redis
+    networks:
+      - wotg-network
 
   db:
     image: mysql:8
@@ -31,11 +33,19 @@ services:
       - "3308:3306"
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - wotg-network
 
   redis:
     image: redis:7
     ports:
       - "6377:6379"
+    networks:
+      - wotg-network
 
 volumes:
   db_data:
+
+networks:
+  wotg-network:
+    external: true   # 👈 use the shared network you created
