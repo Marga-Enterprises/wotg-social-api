@@ -52,6 +52,10 @@ Post.init({
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
+  release_date: {
+      type: DataTypes.DATEONLY, // 👈 DATE only (no time)
+      allowNull: true,
+  },
 }, {
   sequelize,
   modelName: 'Post',

@@ -31,6 +31,7 @@ const { Op, Sequelize } = require('sequelize');
 
 exports.list = async (req, res) => {
     const token = getToken(req.headers);
+    const dateNow = new Date();
 
     if (!token) return sendError(res, '', 'Please log in first.');
 
@@ -54,7 +55,9 @@ exports.list = async (req, res) => {
             return sendSuccess(res, JSON.parse(cached), 'From cache');
         }*/
 
-        const where = {};
+        const where = {
+            release_date: { [Op.or]: { [Op.lte]: dateNow, [Op.is]: null } }
+        };
 
         if (userId) {
           where[Op.or] = [{ user_id: userId }];
