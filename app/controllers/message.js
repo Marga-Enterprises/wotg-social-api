@@ -268,16 +268,14 @@ exports.sendFileMessage = (req, res, io) => {
 
 exports.reactToMessage = async (req, res, io) => {
   const token = getToken(req.headers);
-  if (!token) {
-    return sendErrorUnauthorized(res, '', 'Please login first.');
-  }
+  if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
 
   const userDecoded = decodeToken(token);
   const userId = userDecoded.user.id;
   const { messageId, react } = req.body;
 
   try {
-    // ✅ Fetch the message and its sender
+    // 1️⃣ Fetch the message and its sender
     const message = await Message.findOne({
       where: { id: messageId },
       include: [
@@ -289,23 +287,16 @@ exports.reactToMessage = async (req, res, io) => {
       ],
     });
 
-    if (!message) {
-      return sendError(res, null, 'Message not found.', 404);
-    }
+    if (!message) return sendError(res, null, 'Message not found.', 404);
 
-    // ✅ Prevent user from reacting to their own message (optional)
-    if (message.sender.id === userId) {
+    // 2️⃣ Prevent user from reacting to their own message (optional)
+    if (message.sender.id === userId)
       return sendError(res, null, "You can't react to your own message.", 400);
-    }
 
-    // ✅ Create new reaction record
-    const reaction = await MessageReact.create({
-      messageId,
-      userId,
-      react,
-    });
+    // 3️⃣ Create new reaction
+    const reaction = await MessageReact.create({ messageId, userId, react });
 
-    // ✅ Fetch full reaction details with user info
+    // 4️⃣ Fetch full reaction details with user info
     const fullReaction = await MessageReact.findOne({
       where: { id: reaction.id },
       include: [
@@ -317,71 +308,71 @@ exports.reactToMessage = async (req, res, io) => {
       ],
     });
 
-    // ✅ Emit real-time event to all clients in this chatroom
-    if (io) {
-      io.to(message.chatroomId).emit('new_message_reaction', fullReaction);
-    }
+    // 5️⃣ Emit real-time update to chatroom
+    if (io) io.to(message.chatroomId).emit('new_message_reaction', fullReaction);
 
-    // ✅ Notify message sender through push notification
+    // 6️⃣ Prepare for push notifications
     const subscriptions = await Subscription.findAll({
       where: { userId: message.sender.id },
     });
 
-    if (subscriptions.length > 0) {
-      const reactionEmojis = {
-        heart: '❤️',
-        pray: '🙏',
-        praise: '🙌',
-        clap: '👏',
-      };
-
-      const reactionEmoji = reactionEmojis[react] || '';
-
-      console.log(`🔔 Sending reaction notification to ${subscriptions.length} subscriber(s)...`);
-
-      const sendPromises = subscriptions.map(async (subscription) => {
-        try {
-          let subscriptionData = subscription.subscription;
-
-          // Parse safely if stored as JSON string
-          if (typeof subscriptionData === 'string') {
-            try {
-              subscriptionData = JSON.parse(subscriptionData);
-            } catch (error) {
-              console.error('⚠️ Error parsing subscription JSON:', error);
-              return; // skip this one
-            }
-          }
-
-          const fcmToken = subscriptionData?.fcmToken;
-          if (!fcmToken) return;
-
-          // ✅ Construct payload with redirect URL
-          const data = {
-            type: 'chat_reaction',
-            chatroomId: message.chatroomId,
-            messageId: message.id,
-            url: `https://community.wotgonline.com/chat?chat=${message.chatroomId}`,
-          };
-
-          await sendNotification(
-            fcmToken,
-            'WOTG Community',
-            `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`,
-            data
-          );
-        } catch (error) {
-          console.error('❌ Error sending push notification:', error);
-        }
-      });
-
-      const results = await Promise.allSettled(sendPromises);
-      const successCount = results.filter((r) => r.status === 'fulfilled').length;
-      const failCount = results.filter((r) => r.status === 'rejected').length;
-      console.log(`✅ Reaction notifications summary: ${successCount} sent, ${failCount} failed`);
-    } else {
+    if (!subscriptions || subscriptions.length === 0) {
       console.log('ℹ️ No subscriptions found for this user.');
+      return sendSuccess(res, fullReaction);
     }
+
+    // 🔹 Reaction emoji mapping
+    const reactionEmojis = { heart: '❤️', pray: '🙏', praise: '🙌', clap: '👏' };
+    const reactionEmoji = reactionEmojis[react] || '';
+
+    // 7️⃣ Extract & deduplicate FCM tokens
+    const allTokens = [];
+
+    for (const sub of subscriptions) {
+      try {
+        let subData =
+          typeof sub.subscription === 'string'
+            ? JSON.parse(sub.subscription)
+            : sub.subscription;
+
+        const fcmToken = subData?.fcmToken;
+        if (fcmToken) allTokens.push(fcmToken);
+      } catch (err) {
+        console.error('⚠️ Error parsing subscription JSON:', err);
+      }
+    }
+
+    const uniqueTokens = [...new Set(allTokens)];
+    console.log(`📱 Sending reaction push to ${uniqueTokens.length} unique device(s)`);
+
+    // 8️⃣ Construct notification payload
+    const data = {
+      type: 'chat_reaction',
+      chatroomId: message.chatroomId,
+      messageId: message.id,
+      url: `https://community.wotgonline.com/chat?chat=${message.chatroomId}`,
+    };
+
+    const title = 'WOTG Community';
+    const body = `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`;
+
+    // 9️⃣ Send notification to each unique token
+    const results = await Promise.allSettled(
+      uniqueTokens.map(async (fcmToken) => {
+        try {
+          await sendNotification(fcmToken, title, body, data);
+        } catch (err) {
+          console.error('❌ Push send error:', err);
+          throw err;
+        }
+      })
+    );
+
+    // 10️⃣ Log summary
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failCount = results.filter((r) => r.status === 'rejected').length;
+
+    console.log(`✅ Reaction notification summary: ${successCount} sent, ${failCount} failed`);
 
     return sendSuccess(res, fullReaction);
   } catch (error) {
@@ -389,7 +380,6 @@ exports.reactToMessage = async (req, res, io) => {
     return sendError(res, error, 'Failed to react to message.', 500);
   }
 };
-
 
 exports.sendBotReply = async (req, res, io) => {
   const token = getToken(req.headers);
@@ -604,49 +594,59 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
     });
   }
 
-  // 7️⃣ Push Notifications
+  // 7️⃣ Push Notifications (deduplicated)
   const chatUrl =
     process.env.NODE_ENV === 'development'
       ? `http://localhost:3000/chat?chat=${chatroomId}`
       : `https://community.wotgonline.com/chat?chat=${chatroomId}`;
 
+  // 🧩 Collect all FCM tokens from all recipients
+  let allTokens = [];
+
   await Promise.allSettled(
     recipients.map(async (participant) => {
       const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
 
-      await Promise.allSettled(
-        subscriptions.map(async (subscription) => {
-          try {
-            let subData = subscription.subscription;
-            if (typeof subData === 'string') {
-              try {
-                subData = JSON.parse(subData);
-              } catch (error) {
-                console.error('⚠️ Subscription JSON parse error:', error);
-                return;
-              }
-            }
+      for (const subscription of subscriptions) {
+        let subData;
+        try {
+          subData = typeof subscription.subscription === 'string'
+            ? JSON.parse(subscription.subscription)
+            : subscription.subscription;
+        } catch (err) {
+          console.error('⚠️ Subscription JSON parse error:', err);
+          continue;
+        }
 
-            const fcmToken = subData?.fcmToken;
-            if (!fcmToken) return;
+        const fcmToken = subData?.fcmToken;
+        if (fcmToken) allTokens.push(fcmToken);
+      }
+    })
+  );
 
-            // 🧩 Notification payload with URL
-            const data = {
-              type: 'chat_message',
-              chatroomId,
-              messageId: message.id,
-              url: chatUrl,
-            };
+  // 🧹 Deduplicate tokens across all users
+  const uniqueTokens = [...new Set(allTokens)];
+  console.log(`📱 Sending push to ${uniqueTokens.length} unique device(s).`);
 
-            const title = `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`;
-            const body = fullMessage.type === 'file' ? 'Sent an image 📷' : content;
+  // 🔔 Prepare payload
+  const data = {
+    type: 'chat_message',
+    chatroomId,
+    messageId: message.id,
+    url: chatUrl,
+  };
 
-            await sendNotification(fcmToken, title, body, data);
-          } catch (err) {
-            console.error('❌ Push notification error:', err);
-          }
-        })
-      );
+  const title = `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`;
+  const body = fullMessage.type === 'file' ? 'Sent an image 📷' : content;
+
+  // 🚀 Send to each unique device only once
+  await Promise.allSettled(
+    uniqueTokens.map(async (fcmToken) => {
+      try {
+        await sendNotification(fcmToken, title, body, data);
+      } catch (err) {
+        console.error('❌ Push notification error:', err);
+      }
     })
   );
 
@@ -694,6 +694,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
 
   return fullMessage;
 };
+
 
 
 
