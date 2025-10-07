@@ -62,66 +62,50 @@ exports.updateLatestWorship = async (req, res, io) => {
       url: `https://community.wotgonline.com/worship`,
     };
 
-    // ✅ Fetch all subscribers
+    // ✅ Notify all subscribers
     const subscribers = await Subscription.findAll();
+
     if (subscribers.length === 0) {
       console.log("ℹ️ No subscribers found for worship notifications.");
-      return sendSuccess(res, { videoId });
-    }
+    } else {
+      console.log(`🔔 Sending ${isLive ? "LIVE" : "STOP"} notifications to ${subscribers.length} subscribers...`);
 
-    console.log(`🔔 Preparing to send worship ${isLive ? "LIVE" : "STOP"} notifications to ${subscribers.length} total subscriptions...`);
-
-    // 🧩 1. Extract all FCM tokens
-    const allTokens = [];
-
-    for (const subscriber of subscribers) {
-      try {
-        let subscriptionData = subscriber.subscription;
-        if (typeof subscriptionData === "string") {
-          try {
-            subscriptionData = JSON.parse(subscriptionData);
-          } catch (err) {
-            console.error("⚠️ Failed to parse subscription JSON:", err);
-            continue;
-          }
-        }
-
-        const fcmToken = subscriptionData?.fcmToken;
-        if (fcmToken) allTokens.push(fcmToken);
-      } catch (err) {
-        console.error("⚠️ Error reading subscriber:", err);
-      }
-    }
-
-    // 🧹 2. Deduplicate tokens across all users
-    const uniqueTokens = [...new Set(allTokens)];
-    console.log(`📱 Sending worship push to ${uniqueTokens.length} unique device(s)`);
-
-    // 🔔 3. Send notifications (deduplicated)
-    const sendResults = await Promise.allSettled(
-      uniqueTokens.map(async (fcmToken) => {
+      const sendPromises = subscribers.map(async (subscriber) => {
         try {
+          let subscriptionData = subscriber.subscription;
+
+          // Parse if stored as JSON string
+          if (typeof subscriptionData === "string") {
+            try {
+              subscriptionData = JSON.parse(subscriptionData);
+            } catch (err) {
+              console.error("⚠️ Failed to parse subscription JSON:", err);
+            }
+          }
+
+          const fcmToken = subscriptionData?.fcmToken;
+          if (!fcmToken) return;
+
           await sendNotification(fcmToken, title, body, data);
         } catch (err) {
-          console.error("❌ Error sending worship push:", err);
-          throw err;
+          console.error("❌ Error sending worship notification:", err);
         }
-      })
-    );
+      });
 
-    // 🧾 4. Log summary
-    const successCount = sendResults.filter((r) => r.status === "fulfilled").length;
-    const failCount = sendResults.filter((r) => r.status === "rejected").length;
-    console.log(`✅ Worship push summary → Sent: ${successCount}, Failed: ${failCount}`);
+      const results = await Promise.allSettled(sendPromises);
+      const successCount = results.filter(r => r.status === "fulfilled").length;
+      const failCount = results.filter(r => r.status === "rejected").length;
+      console.log(`✅ Worship notifications summary: ${successCount} sent, ${failCount} failed`);
+    }
 
-    // ✅ Respond to host
+    // ✅ Always respond to the host (must resolve)
     return sendSuccess(res, { videoId });
+
   } catch (err) {
     console.error("🔥 Error in updateLatestWorship:", err);
     return sendError(res, "Internal Server Error", 500);
   }
 };
-
 
 
 

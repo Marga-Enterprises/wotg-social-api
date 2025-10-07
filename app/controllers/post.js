@@ -1256,12 +1256,12 @@ const sendNotifiAndEmit = async ({
   sub_target_id,
   type,
   message,
-  io,
+  io
 }) => {
   try {
     if (sender_id === recipient_id) return;
 
-    // 1️⃣ Create the notification record
+    // 📨 1. Create notification in DB
     const newNotif = await Notification.create({
       sender_id,
       recipient_id,
@@ -1274,7 +1274,7 @@ const sendNotifiAndEmit = async ({
 
     await clearNotificationsCache(recipient_id);
 
-    // 2️⃣ Fetch complete notification with relations
+    // 🧩 2. Fetch complete notification with associations
     const notification = await Notification.findOne({
       where: { id: newNotif.dataValues.id },
       include: [
@@ -1352,15 +1352,22 @@ const sendNotifiAndEmit = async ({
       ],
     });
 
-    // 3️⃣ Emit real-time notification
+    // 🔊 3. Emit to recipient (for real-time UI)
     io.to(recipient_id).emit('new_notification', notification);
 
-    // 4️⃣ Build redirect URL
+    // 🌐 4. Construct redirect URL for push notification
     let url = 'https://community.wotgonline.com';
+
     switch (target_type) {
       case 'Post':
+        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
+        break;
       case 'Comment':
+        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
+        break;
       case 'Tag':
+        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
+        break;
       case 'Share':
         url = `https://community.wotgonline.com/feeds?post=${target_id}`;
         break;
@@ -1369,15 +1376,15 @@ const sendNotifiAndEmit = async ({
         break;
     }
 
-    // 5️⃣ Prepare notification data
+    // 🧠 5. Prepare data payload
     const data = {
-      type: target_type?.toLowerCase(),
+      type: target_type.toLowerCase(),
       target_id,
       sub_target_id,
       url,
     };
 
-    // 6️⃣ Fetch user subscriptions
+    // 🔔 6. Send push notifications
     const subscriptions = await Subscription.findAll({
       where: { user_id: recipient_id },
     });
@@ -1387,47 +1394,37 @@ const sendNotifiAndEmit = async ({
       return;
     }
 
-    console.log(`🔔 Found ${subscriptions.length} subscription(s) for user ${recipient_id}`);
+    console.log(`🔔 Sending notification to ${subscriptions.length} device(s) for user ${recipient_id}`);
 
-    // 7️⃣ Extract and deduplicate tokens
-    const allTokens = [];
-
-    for (const sub of subscriptions) {
+    const sendPromises = subscriptions.map(async (subscription) => {
       try {
-        let subData =
-          typeof sub.subscription === 'string'
-            ? JSON.parse(sub.subscription)
-            : sub.subscription;
+        let subscriptionData = subscription.subscription;
 
-        const fcmToken = subData?.fcmToken;
-        if (fcmToken) allTokens.push(fcmToken);
-      } catch (err) {
-        console.error('⚠️ Failed to parse subscription JSON:', err);
-      }
-    }
-
-    const uniqueTokens = [...new Set(allTokens)];
-    console.log(`📱 Sending push to ${uniqueTokens.length} unique device(s)`);
-
-    // 8️⃣ Send notifications (deduplicated)
-    const sendResults = await Promise.allSettled(
-      uniqueTokens.map(async (fcmToken) => {
-        try {
-          await sendNotification(fcmToken, 'WOTG Community', message, data);
-        } catch (err) {
-          console.error('❌ Push send error:', err);
-          throw err;
+        if (typeof subscriptionData === 'string') {
+          try {
+            subscriptionData = JSON.parse(subscriptionData);
+          } catch (parseErr) {
+            console.error('⚠️ Failed to parse subscription JSON:', parseErr);
+            return;
+          }
         }
-      })
-    );
 
-    // 9️⃣ Log summary
-    const successCount = sendResults.filter((r) => r.status === 'fulfilled').length;
-    const failCount = sendResults.filter((r) => r.status === 'rejected').length;
+        const fcmToken = subscriptionData?.fcmToken;
+        if (!fcmToken) return;
+
+        await sendNotification(fcmToken, 'WOTG Community', message, data);
+      } catch (err) {
+        console.error('❌ Error sending push notification:', err);
+      }
+    });
+
+    const results = await Promise.allSettled(sendPromises);
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failCount = results.filter((r) => r.status === 'rejected').length;
+
     console.log(`✅ Push summary → Sent: ${successCount}, Failed: ${failCount}`);
 
   } catch (err) {
     console.error('🔥 sendNotifiAndEmit error:', err);
   }
 };
-
