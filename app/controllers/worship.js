@@ -58,7 +58,7 @@ exports.updateLatestWorship = async (req, res, io) => {
       : "Our worship livestream has ended. See you next time!";
 
     // ✅ Dynamic click URL
-    const url = node.process.env.NODE_ENV === "production"
+    const url = process.env.NODE_ENV === "production"
       ? `https://yourproductiondomain.com/worship`
       : `http://localhost:3000/worship`;
 
