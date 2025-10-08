@@ -1,13 +1,17 @@
-const admin = require("../firebase");
+const admin = require("../firebase"); // adjust path if needed
 
+/**
+ * Sends a push notification using Firebase Admin SDK
+ * that supports heads-up display and clickable links.
+ *
+ * @param {string} fcmToken - Target user's FCM registration token
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body text
+ * @param {object} data - Optional custom data (e.g. { url, chatroomId, type })
+ */
 exports.sendNotification = async (fcmToken, title, body, data = {}) => {
   try {
     const url = data?.url || "https://community.wotgonline.com/";
-
-    // Convert all data values to strings
-    const stringData = Object.fromEntries(
-      Object.entries({ ...data, url }).map(([k, v]) => [k, String(v)])
-    );
 
     const message = {
       token: fcmToken,
@@ -16,20 +20,17 @@ exports.sendNotification = async (fcmToken, title, body, data = {}) => {
         body,
         image: "https://wotg.sgp1.cdn.digitaloceanspaces.com/images/wotgLogo.webp",
       },
-      data: stringData,
+      data: {
+        ...data,
+        url, // ensure SW can open correct page
+      },
       android: {
         priority: "high",
         notification: {
-          clickAction: url,
+          clickAction: url, // 🔗 makes it clickable in Android
           sound: "default",
           vibrateTimingsMillis: [200, 100, 200],
           defaultVibrateTimings: true,
-          visibility: "public", // ensures heads-up
-          sticky: false,
-          defaultSound: true,
-          defaultVibrateTimings: true,
-          notificationCount: 1,
-          // eventTime removed ✅
         },
       },
       webpush: {
@@ -37,13 +38,10 @@ exports.sendNotification = async (fcmToken, title, body, data = {}) => {
           icon: "https://wotg.sgp1.cdn.digitaloceanspaces.com/images/wotgLogo.webp",
           badge: "https://wotg.sgp1.cdn.digitaloceanspaces.com/images/wotgLogo.webp",
           vibrate: [200, 100, 200],
-          requireInteraction: true,
-          renotify: true,
-          silent: false,
-          timestamp: Date.now(), // ✅ safe here for Chrome heads-up
+          requireInteraction: true, // stays visible until clicked
         },
         fcmOptions: {
-          link: url,
+          link: url, // ✅ Chrome uses this to open when clicked
         },
       },
     };
@@ -55,3 +53,4 @@ exports.sendNotification = async (fcmToken, title, body, data = {}) => {
     console.error("❌ FCM sendNotification error:", err);
   }
 };
+
