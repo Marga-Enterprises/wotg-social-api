@@ -553,7 +553,14 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
               {
                 model: User,
                 as: 'user',
-                attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role', 'email'],
+                attributes: [
+                  'id',
+                  'user_fname',
+                  'user_lname',
+                  'user_profile_picture',
+                  'user_role',
+                  'email',
+                ],
               },
             ],
           },
@@ -568,7 +575,13 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
   // 4️⃣ Get all chat participants except sender
   const participants = await Participant.findAll({
     where: { chatRoomId: chatroomId },
-    include: [{ model: User, as: 'user', attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'email'] }],
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'email'],
+      },
+    ],
   });
 
   const recipients = participants.filter((p) => p.user.id !== senderId);
@@ -612,7 +625,9 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
 
   await Promise.allSettled(
     recipients.map(async (participant) => {
-      const subscriptions = await Subscription.findAll({ where: { userId: participant.user.id } });
+      const subscriptions = await Subscription.findAll({
+        where: { userId: participant.user.id },
+      });
 
       await Promise.allSettled(
         subscriptions.map(async (subscription) => {
@@ -630,11 +645,11 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
             const fcmToken = subData?.fcmToken;
             if (!fcmToken) return;
 
-            // 🧩 Notification payload with URL
+            // 🧩 Ensure data values are strings (Firebase requires this)
             const data = {
               type: 'chat_message',
-              chatroomId,
-              messageId: message.id,
+              chatroomId: String(chatroomId),
+              messageId: String(message.id),
               url: chatUrl,
             };
 
@@ -671,15 +686,15 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
           to: email,
           subject: `📩 Bagong mensahe mula kay ${senderName}`,
           text: `
-            Hi ${recipient.user_fname},
+Hi ${recipient.user_fname},
 
-            May bagong mensahe ka mula kay ${senderName} sa iyong Word on the Go chatroom:
+May bagong mensahe ka mula kay ${senderName} sa iyong Word on the Go chatroom:
 
-            "${preview}"
+"${preview}"
 
-            Mag-reply na ngayon 👉 ${chatUrl}
+Mag-reply na ngayon 👉 ${chatUrl}
 
-            — WOTG System Notification
+— WOTG System Notification
           `.trim(),
         };
 
@@ -694,6 +709,7 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
 
   return fullMessage;
 };
+
 
 
 
