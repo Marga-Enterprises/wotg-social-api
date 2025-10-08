@@ -50,16 +50,24 @@ exports.updateLatestWorship = async (req, res, io) => {
       }
     }
 
-    // ✅ Prepare notification content
+    // ✅ Determine notification content
     const isLive = latestVideoId !== "defaultVideoID";
     const title = isLive ? "Worship Live Now!" : "Worship Livestream Ended";
     const body = isLive
-      ? "Join the worship livestream now and be blessed."
-      : "Our worship livestream has just ended. See you next time!";
+      ? "Tap to join the worship livestream now and be blessed."
+      : "Our worship livestream has ended. See you next time!";
+
+    // ✅ Dynamic click URL
+    const url = node.process.env.NODE_ENV === "production"
+      ? `https://yourproductiondomain.com/worship`
+      : `http://localhost:3000/worship`;
+
+    // ✅ Data payload (must use strings)
     const data = {
       type: "worship_livestream",
-      videoId: latestVideoId,
-      url: `https://community.wotgonline.com/worship`,
+      videoId: String(latestVideoId),
+      url,
+      status: isLive ? "live" : "ended",
     };
 
     // ✅ Notify all subscribers
@@ -68,24 +76,28 @@ exports.updateLatestWorship = async (req, res, io) => {
     if (subscribers.length === 0) {
       console.log("ℹ️ No subscribers found for worship notifications.");
     } else {
-      console.log(`🔔 Sending ${isLive ? "LIVE" : "STOP"} notifications to ${subscribers.length} subscribers...`);
+      console.log(
+        `🔔 Sending ${isLive ? "LIVE" : "END"} notifications to ${subscribers.length} subscribers...`
+      );
 
       const sendPromises = subscribers.map(async (subscriber) => {
         try {
           let subscriptionData = subscriber.subscription;
 
-          // Parse if stored as JSON string
+          // Parse JSON if needed
           if (typeof subscriptionData === "string") {
             try {
               subscriptionData = JSON.parse(subscriptionData);
             } catch (err) {
               console.error("⚠️ Failed to parse subscription JSON:", err);
+              return;
             }
           }
 
           const fcmToken = subscriptionData?.fcmToken;
           if (!fcmToken) return;
 
+          // 🧩 Send the push notification
           await sendNotification(fcmToken, title, body, data);
         } catch (err) {
           console.error("❌ Error sending worship notification:", err);
@@ -93,19 +105,20 @@ exports.updateLatestWorship = async (req, res, io) => {
       });
 
       const results = await Promise.allSettled(sendPromises);
-      const successCount = results.filter(r => r.status === "fulfilled").length;
-      const failCount = results.filter(r => r.status === "rejected").length;
+      const successCount = results.filter((r) => r.status === "fulfilled").length;
+      const failCount = results.filter((r) => r.status === "rejected").length;
       console.log(`✅ Worship notifications summary: ${successCount} sent, ${failCount} failed`);
     }
 
-    // ✅ Always respond to the host (must resolve)
+    // ✅ Respond to the host
     return sendSuccess(res, { videoId });
-
   } catch (err) {
     console.error("🔥 Error in updateLatestWorship:", err);
     return sendError(res, "Internal Server Error", 500);
   }
 };
+
+
 
 
 
