@@ -59,7 +59,7 @@ exports.updateLatestWorship = async (req, res, io) => {
 
     // ✅ Dynamic click URL
     const url = process.env.NODE_ENV === "production"
-      ? `https://yourproductiondomain.com/worship`
+      ? `https://community.wotgonline.com/worship`
       : `http://localhost:3000/worship`;
 
     // ✅ Data payload (must use strings)
