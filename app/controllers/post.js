@@ -1256,12 +1256,12 @@ const sendNotifiAndEmit = async ({
   sub_target_id,
   type,
   message,
-  io
+  io,
 }) => {
   try {
-    if (sender_id === recipient_id) return;
+    if (sender_id === recipient_id) return; // Skip self-notifications
 
-    // 📨 1. Create notification in DB
+    // 📨 1️⃣ Create notification record in DB
     const newNotif = await Notification.create({
       sender_id,
       recipient_id,
@@ -1274,157 +1274,147 @@ const sendNotifiAndEmit = async ({
 
     await clearNotificationsCache(recipient_id);
 
-    // 🧩 2. Fetch complete notification with associations
+    // 🧩 2️⃣ Fetch complete notification with relations
     const notification = await Notification.findOne({
-      where: { id: newNotif.dataValues.id },
+      where: { id: newNotif.id },
       include: [
         {
           model: User,
-          as: 'sender',
-          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+          as: "sender",
+          attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
         },
         {
           model: Post,
-          as: 'targetPost',
+          as: "targetPost",
           attributes: [
-            'id',
-            'user_id',
-            'content',
-            'visibility',
-            'reaction_count',
-            'comments_count',
-            'shares_count',
-            'createdAt',
+            "id",
+            "user_id",
+            "content",
+            "visibility",
+            "reaction_count",
+            "comments_count",
+            "shares_count",
+            "createdAt",
           ],
           include: [
             {
               model: User,
-              as: 'author',
-              attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+              as: "author",
+              attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
             },
-            {
-              model: PostMedia,
-              as: 'media',
-              attributes: ['id', 'url', 'type', 'thumbnail'],
-            },
+            { model: PostMedia, as: "media", attributes: ["id", "url", "type", "thumbnail"] },
             {
               model: Reaction,
-              as: 'reactions',
-              attributes: ['id', 'user_id', 'post_id', 'type'],
+              as: "reactions",
+              attributes: ["id", "user_id", "post_id", "type"],
               include: [
                 {
                   model: User,
-                  as: 'reactor',
-                  attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                  as: "reactor",
+                  attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
                 },
               ],
             },
             {
               model: Post,
-              as: 'original_post',
-              attributes: ['id', 'user_id', 'content'],
+              as: "original_post",
+              attributes: ["id", "user_id", "content"],
               include: [
                 {
                   model: User,
-                  as: 'author',
-                  attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+                  as: "author",
+                  attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
                 },
-                {
-                  model: PostMedia,
-                  as: 'media',
-                  attributes: ['id', 'url', 'type', 'thumbnail'],
-                },
+                { model: PostMedia, as: "media", attributes: ["id", "url", "type", "thumbnail"] },
               ],
             },
           ],
         },
         {
           model: Comment,
-          as: 'targetComment',
+          as: "targetComment",
           include: [
             {
               model: User,
-              as: 'author',
-              attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+              as: "author",
+              attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
             },
           ],
         },
       ],
     });
 
-    // 🔊 3. Emit to recipient (for real-time UI)
-    io.to(recipient_id).emit('new_notification', notification);
+    // 🔊 3️⃣ Emit new notification via Socket.IO
+    if (io) {
+      io.to(recipient_id).emit("new_notification", notification);
+    }
 
-    // 🌐 4. Construct redirect URL for push notification
-    let url = 'https://community.wotgonline.com';
-
+    // 🌐 4️⃣ Determine redirect URL based on target type
+    let url = "https://community.wotgonline.com";
     switch (target_type) {
-      case 'Post':
-        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
-        break;
-      case 'Comment':
-        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
-        break;
-      case 'Tag':
-        url = `https://community.wotgonline.com/feeds?post=${target_id}`;
-        break;
-      case 'Share':
+      case "Post":
+      case "Comment":
+      case "Tag":
+      case "Share":
         url = `https://community.wotgonline.com/feeds?post=${target_id}`;
         break;
       default:
-        url = 'https://community.wotgonline.com';
-        break;
+        url = "https://community.wotgonline.com";
     }
 
-    // 🧠 5. Prepare data payload
+    // 🧠 5️⃣ Prepare push data payload
     const data = {
-      type: target_type.toLowerCase(),
-      target_id,
-      sub_target_id,
+      type: String(target_type || "").toLowerCase(),
+      target_id: String(target_id || ""),
+      sub_target_id: sub_target_id ? String(sub_target_id) : "",
       url,
     };
 
-    // 🔔 6. Send push notifications
+    // 🔔 6️⃣ Get all FCM subscriptions for recipient
     const subscriptions = await Subscription.findAll({
       where: { user_id: recipient_id },
     });
 
     if (!subscriptions.length) {
-      console.log(`ℹ️ No subscriptions found for user ${recipient_id}.`);
+      console.log(`ℹ️ No FCM subscriptions found for user ${recipient_id}`);
       return;
     }
 
-    console.log(`🔔 Sending notification to ${subscriptions.length} device(s) for user ${recipient_id}`);
+    console.log(`🔔 Sending FCM to ${subscriptions.length} device(s) for user ${recipient_id}...`);
 
-    const sendPromises = subscriptions.map(async (subscription) => {
-      try {
-        let subscriptionData = subscription.subscription;
+    // 🚀 7️⃣ Send push notifications concurrently
+    const results = await Promise.allSettled(
+      subscriptions.map(async (subscription) => {
+        try {
+          let subscriptionData = subscription.subscription;
 
-        if (typeof subscriptionData === 'string') {
-          try {
-            subscriptionData = JSON.parse(subscriptionData);
-          } catch (parseErr) {
-            console.error('⚠️ Failed to parse subscription JSON:', parseErr);
-            return;
+          // Safely parse if stored as a string
+          if (typeof subscriptionData === "string") {
+            try {
+              subscriptionData = JSON.parse(subscriptionData);
+            } catch (parseErr) {
+              console.error("⚠️ Failed to parse subscription JSON:", parseErr);
+              return;
+            }
           }
+
+          const fcmToken = subscriptionData?.fcmToken;
+          if (!fcmToken) return;
+
+          // ✅ Use updated sendNotification util
+          await sendNotification(fcmToken, "WOTG Community", message, data);
+        } catch (err) {
+          console.error("❌ Error sending FCM push:", err);
         }
+      })
+    );
 
-        const fcmToken = subscriptionData?.fcmToken;
-        if (!fcmToken) return;
-
-        await sendNotification(fcmToken, 'WOTG Community', message, data);
-      } catch (err) {
-        console.error('❌ Error sending push notification:', err);
-      }
-    });
-
-    const results = await Promise.allSettled(sendPromises);
-    const successCount = results.filter((r) => r.status === 'fulfilled').length;
-    const failCount = results.filter((r) => r.status === 'rejected').length;
-
-    console.log(`✅ Push summary → Sent: ${successCount}, Failed: ${failCount}`);
-
+    // 🧾 8️⃣ Log results summary
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.filter((r) => r.status === "rejected").length;
+    console.log(`✅ FCM Summary → Sent: ${successCount}, Failed: ${failCount}`);
   } catch (err) {
-    console.error('🔥 sendNotifiAndEmit error:', err);
+    console.error("🔥 sendNotifiAndEmit error:", err);
   }
 };
+

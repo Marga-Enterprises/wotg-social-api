@@ -269,7 +269,7 @@ exports.sendFileMessage = (req, res, io) => {
 exports.reactToMessage = async (req, res, io) => {
   const token = getToken(req.headers);
   if (!token) {
-    return sendErrorUnauthorized(res, '', 'Please login first.');
+    return sendErrorUnauthorized(res, "", "Please login first.");
   }
 
   const userDecoded = decodeToken(token);
@@ -283,27 +283,23 @@ exports.reactToMessage = async (req, res, io) => {
       include: [
         {
           model: User,
-          as: 'sender',
-          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
+          as: "sender",
+          attributes: ["id", "user_fname", "user_lname", "user_profile_picture", "user_role"],
         },
       ],
     });
 
     if (!message) {
-      return sendError(res, null, 'Message not found.', 404);
+      return sendError(res, null, "Message not found.", 404);
     }
 
-    // ✅ Prevent user from reacting to their own message (optional)
+    // ✅ Optional: prevent self-reactions
     if (message.sender.id === userId) {
       return sendError(res, null, "You can't react to your own message.", 400);
     }
 
     // ✅ Create new reaction record
-    const reaction = await MessageReact.create({
-      messageId,
-      userId,
-      react,
-    });
+    const reaction = await MessageReact.create({ messageId, userId, react });
 
     // ✅ Fetch full reaction details with user info
     const fullReaction = await MessageReact.findOne({
@@ -311,85 +307,83 @@ exports.reactToMessage = async (req, res, io) => {
       include: [
         {
           model: User,
-          as: 'user',
-          attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture'],
+          as: "user",
+          attributes: ["id", "user_fname", "user_lname", "user_profile_picture"],
         },
       ],
     });
 
     // ✅ Emit real-time event to all clients in this chatroom
     if (io) {
-      io.to(message.chatroomId).emit('new_message_reaction', fullReaction);
+      io.to(message.chatroomId).emit("new_message_reaction", fullReaction);
     }
 
-    // ✅ Notify message sender through push notification
-    const subscriptions = await Subscription.findAll({
-      where: { userId: message.sender.id },
-    });
+    // ✅ Prepare reaction emoji mapping
+    const reactionEmojis = {
+      heart: "❤️",
+      pray: "🙏",
+      praise: "🙌",
+      clap: "👏",
+    };
+    const reactionEmoji = reactionEmojis[react] || "";
+
+    // ✅ Notify the message sender via push notification
+    const subscriptions = await Subscription.findAll({ where: { userId: message.sender.id } });
 
     if (subscriptions.length > 0) {
-      const reactionEmojis = {
-        heart: '❤️',
-        pray: '🙏',
-        praise: '🙌',
-        clap: '👏',
-      };
-
-      const reactionEmoji = reactionEmojis[react] || '';
-
       console.log(`🔔 Sending reaction notification to ${subscriptions.length} subscriber(s)...`);
 
-      const sendPromises = subscriptions.map(async (subscription) => {
-        try {
-          let subscriptionData = subscription.subscription;
+      // Handle all subscriptions concurrently, safely
+      const results = await Promise.allSettled(
+        subscriptions.map(async (subscription) => {
+          try {
+            let subscriptionData = subscription.subscription;
 
-          // Parse safely if stored as JSON string
-          if (typeof subscriptionData === 'string') {
-            try {
-              subscriptionData = JSON.parse(subscriptionData);
-            } catch (error) {
-              console.error('⚠️ Error parsing subscription JSON:', error);
-              return; // skip this one
+            // Parse safely if stored as a string
+            if (typeof subscriptionData === "string") {
+              try {
+                subscriptionData = JSON.parse(subscriptionData);
+              } catch (error) {
+                console.error("⚠️ Error parsing subscription JSON:", error);
+                return; // skip invalid entry
+              }
             }
+
+            const fcmToken = subscriptionData?.fcmToken;
+            if (!fcmToken) return;
+
+            // ✅ Construct consistent data payload for SW + util
+            const data = {
+              type: "chat_reaction",
+              chatroomId: String(message.chatroomId),
+              messageId: String(message.id),
+              url: `https://community.wotgonline.com/chat?chat=${message.chatroomId}`,
+            };
+
+            const title = "WOTG Community";
+            const body = `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`;
+
+            // ✅ Uses updated sendNotification util (Android + Web optimized)
+            await sendNotification(fcmToken, title, body, data);
+          } catch (err) {
+            console.error("❌ Error sending push notification:", err);
           }
+        })
+      );
 
-          const fcmToken = subscriptionData?.fcmToken;
-          if (!fcmToken) return;
-
-          // ✅ Construct payload with redirect URL
-          const data = {
-            type: 'chat_reaction',
-            chatroomId: message.chatroomId,
-            messageId: message.id,
-            url: `https://community.wotgonline.com/chat?chat=${message.chatroomId}`,
-          };
-
-          await sendNotification(
-            fcmToken,
-            'WOTG Community',
-            `${fullReaction.user.user_fname} ${fullReaction.user.user_lname} reacted ${reactionEmoji} to your message`,
-            data
-          );
-        } catch (error) {
-          console.error('❌ Error sending push notification:', error);
-        }
-      });
-
-      const results = await Promise.allSettled(sendPromises);
-      const successCount = results.filter((r) => r.status === 'fulfilled').length;
-      const failCount = results.filter((r) => r.status === 'rejected').length;
+      const successCount = results.filter((r) => r.status === "fulfilled").length;
+      const failCount = results.filter((r) => r.status === "rejected").length;
       console.log(`✅ Reaction notifications summary: ${successCount} sent, ${failCount} failed`);
     } else {
-      console.log('ℹ️ No subscriptions found for this user.');
+      console.log("ℹ️ No subscriptions found for this user.");
     }
 
     return sendSuccess(res, fullReaction);
   } catch (error) {
-    console.error('🔥 Error reacting to message:', error);
-    return sendError(res, error, 'Failed to react to message.', 500);
+    console.error("🔥 Error reacting to message:", error);
+    return sendError(res, error, "Failed to react to message.", 500);
   }
 };
-
 
 exports.sendBotReply = async (req, res, io) => {
   const token = getToken(req.headers);
@@ -532,34 +526,34 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
   // 1️⃣ Save the message
   const message = await Message.create({ content, senderId, chatroomId, type, category });
 
-  // 2️⃣ Fetch full message with sender and participants
+  // 2️⃣ Fetch full message with sender & participants
   const fullMessage = await Message.findOne({
     where: { id: message.id },
-    attributes: ['id', 'content', 'senderId', 'chatroomId', 'type', 'category', 'createdAt'],
+    attributes: ["id", "content", "senderId", "chatroomId", "type", "category", "createdAt"],
     include: [
       {
         model: User,
-        as: 'sender',
-        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'user_role'],
+        as: "sender",
+        attributes: ["id", "user_fname", "user_lname", "user_profile_picture", "user_role"],
       },
       {
         model: Chatroom,
-        as: 'chatroom',
+        as: "chatroom",
         include: [
           {
             model: Participant,
-            as: 'Participants',
+            as: "Participants",
             include: [
               {
                 model: User,
-                as: 'user',
+                as: "user",
                 attributes: [
-                  'id',
-                  'user_fname',
-                  'user_lname',
-                  'user_profile_picture',
-                  'user_role',
-                  'email',
+                  "id",
+                  "user_fname",
+                  "user_lname",
+                  "user_profile_picture",
+                  "user_role",
+                  "email",
                 ],
               },
             ],
@@ -569,121 +563,92 @@ const createAndEmitMessage = async ({ content, senderId, chatroomId, type, categ
     ],
   });
 
-  // 3️⃣ Emit new message to socket room
-  io.to(chatroomId).emit('new_message', fullMessage);
+  // 3️⃣ Emit the new message to connected sockets
+  io.to(chatroomId).emit("new_message", fullMessage);
 
-  // 4️⃣ Get all chat participants except sender
+  // 4️⃣ Get all chat participants except the sender
   const participants = await Participant.findAll({
     where: { chatRoomId: chatroomId },
-    include: [
-      {
-        model: User,
-        as: 'user',
-        attributes: ['id', 'user_fname', 'user_lname', 'user_profile_picture', 'email'],
-      },
-    ],
+    include: [{ model: User, as: "user", attributes: ["id", "user_fname", "user_lname", "user_profile_picture", "email"] }],
   });
 
   const recipients = participants.filter((p) => p.user.id !== senderId);
 
-  // 5️⃣ Save unread flags
-  await Promise.all(
-    recipients.map((participant) =>
-      MessageReadStatus.create({
-        messageId: message.id,
-        userId: participant.user.id,
-        read: false,
-      })
-    )
+  // 5️⃣ Save unread flags in bulk (avoids n separate inserts)
+  await MessageReadStatus.bulkCreate(
+    recipients.map((p) => ({ messageId: message.id, userId: p.user.id, read: false })),
+    { ignoreDuplicates: true }
   );
 
-  // 6️⃣ Emit unread count per user
-  for (const participant of recipients) {
-    const unreadCount = await MessageReadStatus.count({
-      where: { userId: participant.user.id, read: false },
-      include: [
-        {
-          model: Message,
-          as: 'message',
-          attributes: [],
-          where: { chatroomId },
-        },
-      ],
-    });
+  // 6️⃣ Emit unread counts concurrently
+  await Promise.all(
+    recipients.map(async (p) => {
+      const unreadCount = await MessageReadStatus.count({
+        where: { userId: p.user.id, read: false },
+        include: [{ model: Message, as: "message", attributes: [], where: { chatroomId } }],
+      });
+      io.to(`user_${p.user.id}`).emit("unread_update", { chatroomId, unreadCount });
+    })
+  );
 
-    io.to(`user_${participant.user.id}`).emit('unread_update', {
-      chatroomId,
-      unreadCount,
-    });
-  }
-
-  // 7️⃣ Push Notifications
+  // 7️⃣ Push Notifications ----------------------------------------------------
   const chatUrl =
-    process.env.NODE_ENV === 'development'
+    process.env.NODE_ENV === "development"
       ? `http://localhost:3000/chat?chat=${chatroomId}`
       : `https://community.wotgonline.com/chat?chat=${chatroomId}`;
 
   await Promise.allSettled(
-    recipients.map(async (participant) => {
-      const subscriptions = await Subscription.findAll({
-        where: { userId: participant.user.id },
-      });
+    recipients.map(async (p) => {
+      const subscriptions = await Subscription.findAll({ where: { userId: p.user.id } });
+      if (!subscriptions.length) return;
 
       await Promise.allSettled(
-        subscriptions.map(async (subscription) => {
+        subscriptions.map(async (s) => {
           try {
-            let subData = subscription.subscription;
-            if (typeof subData === 'string') {
-              try {
-                subData = JSON.parse(subData);
-              } catch (error) {
-                console.error('⚠️ Subscription JSON parse error:', error);
-                return;
-              }
-            }
-
+            const subData = typeof s.subscription === "string" ? JSON.parse(s.subscription) : s.subscription;
             const fcmToken = subData?.fcmToken;
             if (!fcmToken) return;
 
-            // 🧩 Ensure data values are strings (Firebase requires this)
+            // Firebase requires string data values
             const data = {
-              type: 'chat_message',
+              type: "chat_message",
               chatroomId: String(chatroomId),
               messageId: String(message.id),
               url: chatUrl,
             };
 
-            const title = `New message from ${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`;
-            const body = fullMessage.type === 'file' ? 'Sent an image 📷' : content;
+            const sender = fullMessage.sender;
+            const title = `New message from ${sender.user_fname} ${sender.user_lname}`;
+            const body = fullMessage.type === "file" ? "Sent an image 📷" : content;
 
             await sendNotification(fcmToken, title, body, data);
           } catch (err) {
-            console.error('❌ Push notification error:', err);
+            console.error("❌ Push notification error:", err);
           }
         })
       );
     })
   );
 
-  // 8️⃣ Email Notifications
+  // 8️⃣ Email Notifications ---------------------------------------------------
   if (recipients.length <= 4) {
     await Promise.allSettled(
-      recipients.map(async (participant) => {
-        const recipient = participant.user;
-        const email = recipient.email;
-        if (!email) return;
+      recipients.map(async (p) => {
+        const recipient = p.user;
+        if (!recipient.email) return;
 
-        const senderName = `${fullMessage.sender.user_fname} ${fullMessage.sender.user_lname}`;
+        const sender = fullMessage.sender;
+        const senderName = `${sender.user_fname} ${sender.user_lname}`;
         const preview =
-          fullMessage.type === 'file'
-            ? '[Image file sent]'
+          fullMessage.type === "file"
+            ? "[Image file sent]"
             : content.length > 100
-            ? content.slice(0, 100) + '…'
+            ? content.slice(0, 100) + "…"
             : content;
 
         const mailOptions = {
           from: process.env.EMAIL_USER,
-          to: email,
+          to: recipient.email,
           subject: `📩 Bagong mensahe mula kay ${senderName}`,
           text: `
 Hi ${recipient.user_fname},
@@ -698,9 +663,7 @@ Mag-reply na ngayon 👉 ${chatUrl}
           `.trim(),
         };
 
-        transporter.sendMail(mailOptions).catch((err) => {
-          console.error('❌ Email send error:', err);
-        });
+        transporter.sendMail(mailOptions).catch((err) => console.error("❌ Email send error:", err));
       })
     );
   } else {
@@ -709,6 +672,7 @@ Mag-reply na ngayon 👉 ${chatUrl}
 
   return fullMessage;
 };
+
 
 
 
