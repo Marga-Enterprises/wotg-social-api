@@ -260,6 +260,24 @@ exports.create = async (req, res, io) => {
             }
         }
 
+        // Notify all subscribers about the new post
+
+        const subscriptions = await Subscription.findAll();
+
+        if (subscriptions && subscriptions.length > 0) {
+            for (const subscription of subscriptions) {
+                await sendNotifiAndEmit({
+                    sender_id: userId,
+                    recipient_id: subscription.userId,
+                    target_type: 'Post',
+                    target_id: newPost.id,
+                    type: 'subscription',
+                    message: `${senderName} published a new post`,
+                    io
+                });
+            }
+        }
+
         await clearPostsCache();
 
         return sendSuccess(res, newPost, 'New Post Created');
@@ -277,7 +295,7 @@ exports.updateById = async (req, res) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
   if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-  const userId = decodedToken.user.id;
+  const userId = decodedToken.id;
 
   try {
     const { postId } = req.params;
@@ -339,7 +357,7 @@ exports.deleteById = async (req, res) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.user.id;
+    const userId = decodedToken.id;
 
     try {
         const { postId } = req.params;
@@ -476,8 +494,8 @@ exports.addComment = async (req, res, io) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.user.id;
-    const followerName =`${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+    const userId = decodedToken.id;
+    const followerName =`${decodedToken.user_fname} ${decodedToken.user_lname}`;
 
     try {
         uploadMemory.single("file")(req, res, async (err) => {
@@ -727,8 +745,8 @@ exports.addReplyToComment = async (req, res, io) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
   if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-  const userId = decodedToken.user.id;
-  const replierName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+  const userId = decodedToken.id;
+  const replierName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
 
   try {
     uploadMemory.single("file")(req, res, async (err) => {
@@ -1039,8 +1057,8 @@ exports.shareByPostId = async (req, res, io) => {
     if (!token) return sendError(res, '', 'Please login first.');
     if (!decodedToken) return sendError(res, '', 'Token not valid unable to decode.');
 
-    const userId = decodedToken.user.id;
-    const sharerName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+    const userId = decodedToken.id;
+    const sharerName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
     
     try {
         const { postId } = req.params;
@@ -1118,8 +1136,8 @@ exports.reactToPostById = async (req, res, io) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.user.id;
-    const reactorName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
+    const userId = decodedToken.id;
+    const reactorName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
 
     try {
         const { postId } = req.params;
