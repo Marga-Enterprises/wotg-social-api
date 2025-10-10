@@ -394,18 +394,19 @@ exports.sendBotReply = async (req, res, io) => {
   const { message, userId, chatroomId } = req.body;
   const content = message.content.trim();
 
-  const menupageLink = process.env.NODE_ENV === "development"
-    ? `http://localhost:3000/`
-    : `https://community.wotgonline.com/`;
+  const menupageLink =
+    process.env.NODE_ENV === "development"
+      ? `http://localhost:3000/`
+      : `https://community.wotgonline.com/`;
 
   try {
     let botState = await GuestBotState.findOne({ where: { userId } });
-    let user; // Declare globally here 👈
+    let user; // Declare globally
 
     if (!botState) {
       botState = await GuestBotState.create({
         userId,
-        currentStep: 'awaiting_name'
+        currentStep: 'awaiting_name',
       });
     } else if (botState.currentStep === 'completed') {
       return sendSuccess(res, { status: 'done' }, 'Bot flow is already completed.');
@@ -438,21 +439,26 @@ exports.sendBotReply = async (req, res, io) => {
 
       case 'awaiting_email':
         if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content)) {
-          user = await User.findOne({ where: { email: content.trim() } }); // Check kung existing na
+          user = await User.findOne({ where: { email: content.trim() } }); // check existing
           if (user) {
             botReply = `Pasensya na, naka-register na ang email na ito. \nPaki-try ang ibang email address.`;
             break;
           }
 
           botState.email = content.trim();
-          botState.currentStep = 'awaiting_mobile';
+          // Skip mobile step for now
+          // botState.currentStep = 'awaiting_mobile';
+          botState.currentStep = 'awaiting_fb_name';
           await botState.save();
-          botReply = `Salamat! \nNgayon naman, pakibigay ang iyong mobile number para makapadala kami ng mga paalala at balita.\nHalimbawa: 09171234567 o +639171234567`;
+
+          botReply = `Salamat! \nNgayon naman, pakibigay ang iyong Facebook Messenger name para mas madali kang makausap ng volunteer namin.\nHalimbawa: Juan Miguel Dela Cruz o JM Cruz`;
         } else {
           botReply = `Mukhang hindi tama ang format ng email. \nPakisubukan ulit.\nHalimbawa: juandelacruz@email.com`;
         }
         break;
 
+      /*
+      // Temporarily disabled mobile number step
       case 'awaiting_mobile':
         if (/^(?:\+?\d{1,4}|0)\d{9,14}$/.test(content)) {
           botState.mobile = content.trim();
@@ -463,6 +469,7 @@ exports.sendBotReply = async (req, res, io) => {
           botReply = `Mukhang may mali sa number. \nPaki-type ulit.\nHalimbawa: 09171234567 o +639171234567`;
         }
         break;
+      */
 
       case 'awaiting_fb_name':
         if (content.length >= 2) {
@@ -470,20 +477,19 @@ exports.sendBotReply = async (req, res, io) => {
           botState.currentStep = 'completed';
           await botState.save();
 
-          botReply = `Salamat, ${botState.firstName} ${botState.lastName}! \nKumpleto na ang iyong registration. \n\nNarito ang iyong mga detalye:\nEmail: ${botState.email}\nPassword: ang inilagay mong mobile number (${botState.mobile})\n\nPwede mong bisitahin ang ating community page dito: ${menupageLink}\n\nMay volunteer na lalapit sa iyo para makausap ka at ipaliwanag ang mga susunod na hakbang.`;
+          botReply = `Salamat, ${botState.firstName} ${botState.lastName}! \nKumpleto na ang iyong registration. \n\nNarito ang iyong mga detalye:\nEmail: ${botState.email}\nPassword: 12345678\n\nPwede mong bisitahin ang ating community page dito: ${menupageLink}\n\nMay volunteer na lalapit sa iyo para makausap ka at ipaliwanag ang mga susunod na hakbang.`;
 
           // Update User once complete
           user = await User.findOne({ where: { id: userId } });
           if (user && user.user_role === 'guest') {
-            const hashedPassword = await bcrypt.hash(botState.mobile, 10);
+            const hashedPassword = await bcrypt.hash('12345678', 10);
             await user.update({
               user_role: 'member',
               user_fname: botState.firstName,
               user_lname: botState.lastName,
-              user_mobile: botState.mobile,
               email: botState.email,
               password: hashedPassword,
-              user_social_media: botState.fbName
+              user_social_media: botState.fbName,
             });
 
             accessToken = generateAccessToken(user);
@@ -499,10 +505,13 @@ exports.sendBotReply = async (req, res, io) => {
         break;
     }
 
-    // Send the message to chatroom
     await sendBot({ chatroomId, content: botReply, io });
 
-    return sendSuccess(res, { step: botState.currentStep, reply: botReply, triggerRefresh, user, accessToken }, 'Bot reply sent.');
+    return sendSuccess(
+      res,
+      { step: botState.currentStep, reply: botReply, triggerRefresh, user, accessToken },
+      'Bot reply sent.'
+    );
   } catch (error) {
     console.error('❌ sendBotReply error:', error);
     return sendError(res, error, 'Failed to send bot reply.');
