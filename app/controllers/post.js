@@ -295,7 +295,7 @@ exports.updateById = async (req, res) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
   if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-  const userId = decodedToken.id;
+  const userId = decodedToken.user.id;
 
   try {
     const { postId } = req.params;
@@ -357,7 +357,7 @@ exports.deleteById = async (req, res) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please log in first');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.id;
+    const userId = decodedToken.user.id;
 
     try {
         const { postId } = req.params;
@@ -374,6 +374,7 @@ exports.deleteById = async (req, res) => {
         });
 
         if (!post) return sendError(res, '', 'Post not found.');
+
         if (post.user_id !== userId) return sendErrorUnauthorized(res, '', 'You are not authorized to delete this post.');
 
         // Delete media files from storage
@@ -494,8 +495,8 @@ exports.addComment = async (req, res, io) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.id;
-    const followerName =`${decodedToken.user_fname} ${decodedToken.user_lname}`;
+    const userId = decodedToken.user.id;
+    const followerName =`${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
 
     try {
         uploadMemory.single("file")(req, res, async (err) => {
@@ -745,8 +746,8 @@ exports.addReplyToComment = async (req, res, io) => {
   if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
   if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-  const userId = decodedToken.id;
-  const replierName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
+  const userId = decodedToken.user.id;
+  const replierName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
 
   try {
     uploadMemory.single("file")(req, res, async (err) => {
@@ -1057,8 +1058,8 @@ exports.shareByPostId = async (req, res, io) => {
     if (!token) return sendError(res, '', 'Please login first.');
     if (!decodedToken) return sendError(res, '', 'Token not valid unable to decode.');
 
-    const userId = decodedToken.id;
-    const sharerName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
+    const userId = decodedToken.user.id;
+    const sharerName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
     
     try {
         const { postId } = req.params;
@@ -1136,8 +1137,8 @@ exports.reactToPostById = async (req, res, io) => {
     if (!token) return sendErrorUnauthorized(res, '', 'Please login first.');
     if (!decodedToken) return sendErrorUnauthorized(res, '', 'Token not valid, unable to decode.');
 
-    const userId = decodedToken.id;
-    const reactorName = `${decodedToken.user_fname} ${decodedToken.user_lname}`;
+    const userId = decodedToken.user.id;
+    const reactorName = `${decodedToken.user.user_fname} ${decodedToken.user.user_lname}`;
 
     try {
         const { postId } = req.params;
