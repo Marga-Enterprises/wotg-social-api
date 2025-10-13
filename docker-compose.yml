@@ -9,6 +9,7 @@ services:
       - .:/app
       - /app/node_modules
     environment:
+      - TZ=Asia/Manila
       - NODE_ENV=${NODE_ENV}
       - PORT=${PORT}
       - DB_HOST=db
