@@ -35,6 +35,9 @@ const {
     sendErrorUnauthorized,
 } = require("../../utils/methods");
 
+// clear cache
+const { clearUsersCache } = require('../../utils/clearBlogCache');
+
 const transporter = nodemailer.createTransport({
   host: "smtp.hostinger.com", // Hostinger's SMTP server
   port: 465, // Use 465 for SSL, or 587 for STARTTLS
@@ -194,6 +197,14 @@ exports.createUser = async (req, res, io) => {
       return sendErrorUnauthorized(res, {}, "Email is already in use.", 400, 103);
     }
 
+    // ✅ Clear Redis cache after new user creation
+    try {
+      await clearUsersCache(); // clears all cached user list pages
+      console.log(`🧹 Cleared users cache after creating user: ${newUser.email}`);
+    } catch (cacheErr) {
+      console.error("⚠️ Failed to clear users cache after createUser:", cacheErr);
+    }
+
     // Define chatroom IDs based on environment
     const chatroomIds = [5, 7];
 
@@ -211,57 +222,57 @@ exports.createUser = async (req, res, io) => {
     // Generate access token only
     const accessToken = generateAccessToken(newUser);
 
-    let participants = [newUser.id, 10]; 
+    let participants = [newUser.id, 10];
     let chatroomLoginId = 0;
 
     let chatroomName = null;
 
     const users = await User.findAll({
-        where: { id: participants },
-        attributes: ['user_fname', 'user_lname'],
+      where: { id: participants },
+      attributes: ["user_fname", "user_lname"],
     });
 
     chatroomName = users
       .map((user) => `${user.user_fname} ${user.user_lname}`)
-      .join(', ');
+      .join(", ");
 
-    const chatroom = await Chatroom.create({ name: chatroomName, type: 'private' });
+    const chatroom = await Chatroom.create({ name: chatroomName, type: "private" });
 
     const participantsData = participants.map((userId) => ({
-        userId,
-        chatRoomId: chatroom.id,
+      userId,
+      chatRoomId: chatroom.id,
     }));
 
     await Participant.bulkCreate(participantsData);
 
     const chatroomParticipants = await Participant.findAll({
-        where: { chatRoomId: chatroom.id },
-        include: [
-            {
-                model: User,
-                as: 'user',
-                attributes: ['id', 'user_fname', 'user_lname', 'email'],
-            },
-        ],
-        attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+      where: { chatRoomId: chatroom.id },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "user_fname", "user_lname", "email"],
+        },
+      ],
+      attributes: ["id", "chatRoomId", "userId", "userName", "joinedAt"],
     });
 
     const chatroomWithParticipants = {
-        id: chatroom.id,
-        name: chatroom.name,
-        type: 'private',
-        createdAt: chatroom.createdAt,
-        updatedAt: chatroom.updatedAt,
-        messages: [],
-        Participants: chatroomParticipants,
-        unreadCount: 0,
-        hasUnread: false,
+      id: chatroom.id,
+      name: chatroom.name,
+      type: "private",
+      createdAt: chatroom.createdAt,
+      updatedAt: chatroom.updatedAt,
+      messages: [],
+      Participants: chatroomParticipants,
+      unreadCount: 0,
+      hasUnread: false,
     };
 
     chatroomLoginId = chatroomWithParticipants.id;
 
     if (io) {
-      io.emit('new_chatroom', chatroomWithParticipants);
+      io.emit("new_chatroom", chatroomWithParticipants);
     }
 
     return sendSuccess(res, { accessToken, chatroomLoginId }, "User created successfully!", 201, 0);
@@ -417,7 +428,7 @@ exports.guestLogin = async (req, res, io) => {
     const plainPassword = crypto.randomBytes(8).toString("hex");
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-    // Create or find the guest
+    // ✅ Create or find the guest
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
@@ -427,11 +438,25 @@ exports.guestLogin = async (req, res, io) => {
         password: hashedPassword,
         user_role: "guest",
         user_gender: null,
+        guest_account: true, // ✅ ensure proper flag
       },
     });
 
     if (!created) {
       return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
+    }
+
+    // ✅ Safety net: ensure guest_account is TRUE (in case schema default fails)
+    if (!newUser.guest_account) {
+      await newUser.update({ guest_account: true });
+    }
+
+    // 🧹 Clear all cached user lists (important for dashboards)
+    try {
+      await clearUsersCache(); // clears all cached user list pages
+      console.log(`🧹 Cleared users cache after guest creation (ID: ${newUser.id}).`);
+    } catch (cacheErr) {
+      console.warn("⚠️ Failed to clear users cache:", cacheErr.message);
     }
 
     // Add default chatrooms
@@ -451,7 +476,11 @@ exports.guestLogin = async (req, res, io) => {
 
     const chatroomName = `Welcome Chat - ${newUser.user_fname} ${newUser.user_lname}`;
 
-    const chatroom = await Chatroom.create({ name: chatroomName, type: 'group', welcome_chat: true });
+    const chatroom = await Chatroom.create({
+      name: chatroomName,
+      type: "group",
+      welcome_chat: true,
+    });
 
     const participantsData = participants.map((userId) => ({
       userId,
@@ -465,17 +494,17 @@ exports.guestLogin = async (req, res, io) => {
       include: [
         {
           model: User,
-          as: 'user',
-          attributes: ['id', 'user_fname', 'user_lname', 'email'],
+          as: "user",
+          attributes: ["id", "user_fname", "user_lname", "email"],
         },
       ],
-      attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+      attributes: ["id", "chatRoomId", "userId", "userName", "joinedAt"],
     });
 
     const chatroomWithParticipants = {
       id: chatroom.id,
       name: chatroom.name,
-      type: 'group',
+      type: "group",
       createdAt: chatroom.createdAt,
       updatedAt: chatroom.updatedAt,
       messages: [],
@@ -487,30 +516,29 @@ exports.guestLogin = async (req, res, io) => {
 
     chatroomLoginId = chatroom.id;
 
-    // Clear chatrooms for the participants
+    // Clear chatrooms cache for all participants
     for (const userId of participants) {
       await clearChatroomsCache(userId);
     }
 
     if (io) {
-      io.emit('new_chatroom', chatroomWithParticipants);
+      io.emit("new_chatroom", chatroomWithParticipants);
     }
 
     await createAndEmitMessage({
-      content: 
-        `Hello kapatid! Maraming salamat sa iyong pagbisita sa ating Word on the Go (WOTG) app.
-         Dito ay makikita mo ang iba’t ibang features gaya ng daily devotions, Bible, journal, community feeds, at marami pang iba. Maaari ka ring makipag-ugnayan sa amin dito mismo.
+      content: `Hello kapatid! Maraming salamat sa iyong pagbisita sa ating Word on the Go (WOTG) app.
+      Dito ay makikita mo ang iba’t ibang features gaya ng daily devotions, Bible, journal, community feeds, at marami pang iba. Maaari ka ring makipag-ugnayan sa amin dito mismo.
 
-         Bago kita ma-connect sa ating team, maaari ko bang malaman ang iyong first name?
-         Halimbawa: Juan o Juan Miguel 😊`,
+      Bago kita ma-connect sa ating team, maaari ko bang malaman ang iyong first name?
+      Halimbawa: Juan o Juan Miguel 😊`,
       senderId: 10,
       chatroomId: chatroom.id,
-      type: 'text',
-      category: 'automated',
+      type: "text",
+      category: "automated",
       io,
     });
 
-    // Send success to the user immediately
+    // ✅ Send success response
     sendSuccess(
       res,
       { accessToken, chatroomLoginId },
@@ -519,7 +547,7 @@ exports.guestLogin = async (req, res, io) => {
       0
     );
 
-    // Notify admin via email (async)
+    // 🔔 Send admin notifications (async)
     const adminEmails =
       process.env.NODE_ENV === "development"
         ? ["pillorajem10@gmail.com"]
@@ -528,18 +556,17 @@ exports.guestLogin = async (req, res, io) => {
             "lamatamarvin83@gmail.com",
             "engrjoelmlusung@gmail.com",
             "donmarper1975@gmail.com",
-            "pillorajem10@gmail.com"
+            "pillorajem10@gmail.com",
           ];
 
     const chatroomWithGuestLink =
-      process.env.NODE_ENV === "development" 
+      process.env.NODE_ENV === "development"
         ? `http://localhost:3000/chat?chat=${chatroomLoginId}`
         : `https://community.wotgonline.com/chat?chat=${chatroomLoginId}`;
 
-    // 🔹 Define shared mail content
     const mailOptions = (to) => ({
       from: process.env.EMAIL_USER,
-      to, // looped recipient
+      to,
       subject: "🚨 New Guest Account Created",
       text: `
         A new guest account has joined the platform and has been added to the WOTG Admin chatroom.
@@ -557,14 +584,11 @@ exports.guestLogin = async (req, res, io) => {
       `.trim(),
     });
 
-
-  // 🔹 Loop and send to each admin
-  for (const admin of adminEmails) {
-    transporter.sendMail(mailOptions(admin)).catch((err) => {
-      console.error(`Email send error to ${admin}:`, err);
-    });
-  }
-
+    for (const admin of adminEmails) {
+      transporter.sendMail(mailOptions(admin)).catch((err) => {
+        console.error(`Email send error to ${admin}:`, err);
+      });
+    }
   } catch (err) {
     console.error("Guest Login Error:", err);
     return res.status(500).json({ error: "Internal server error." });

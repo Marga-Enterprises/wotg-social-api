@@ -26,7 +26,7 @@ User.init({
         type: DataTypes.STRING(255),
         allowNull: false,
         unique: true,
-        index: true, // Added index for email
+        index: true,
     },
     verification_token: {
         type: DataTypes.STRING(255),
@@ -81,7 +81,7 @@ User.init({
         type: DataTypes.STRING(60),
         allowNull: true,
         defaultValue: null,
-        index: true, // Added index for approval_token
+        index: true,
     },
     user_ministry: {
         type: DataTypes.STRING(255),
@@ -125,10 +125,8 @@ User.init({
     },
     refreshToken: { 
         type: DataTypes.TEXT, 
-        allowNull: true 
+        allowNull: true,
     },
-    
-    // ✅ New Fields for Password Reset
     reset_password_token: {
         type: DataTypes.STRING(255),
         allowNull: true,
@@ -140,12 +138,26 @@ User.init({
         defaultValue: null,
     },
 
+    // ✅ New Fields
+    registered_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+        comment: 'Date and time the user registered',
+    },
+    guest_account: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Indicates if the user is a guest account',
+    },
+
 }, {
     sequelize,
     modelName: 'User',
     tableName: 'users',
-    timestamps: false, // No timestamps needed
-    underscored: true, // Use snake_case for column names
+    timestamps: false,
+    underscored: true,
 });
 
 module.exports = User;
