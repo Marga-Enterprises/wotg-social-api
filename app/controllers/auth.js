@@ -573,11 +573,17 @@ exports.guestLogin = async (req, res, io) => {
     }
 
     await createAndEmitMessage({
-      content: `Hello kapatid! Maraming salamat sa iyong pagbisita sa ating Word on the Go (WOTG) app.
-      Dito ay makikita mo ang iba’t ibang features gaya ng daily devotions, Bible, journal, community feeds, at marami pang iba. Maaari ka ring makipag-ugnayan sa amin dito mismo.
+      content: `Hello kapatid! 👋  
+      Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.  
+      Dito ay makikita mo ang mga inspiring features gaya ng *daily devotions, Bible, journal, community feeds,* at marami pang iba.  
+      Maaari ka ring makipag-ugnayan sa amin dito mismo!
 
-      Bago kita ma-connect sa ating team, maaari ko bang malaman ang iyong first name?
-      Halimbawa: Juan o Juan Miguel 😊`,
+      Para makapagsimula, i-click mo muna ang **Sign Up** button sa ibaba at ilagay ang iyong:
+      • First Name  
+      • Last Name  
+      • Email Address  
+
+      Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang makilala pa nang mas malalim ang Panginoon. 🙏`,
       senderId: 10,
       chatroomId: chatroom.id,
       type: "text",
@@ -585,6 +591,7 @@ exports.guestLogin = async (req, res, io) => {
       targetUserId: newUser.id,
       io,
     });
+
 
     // ✅ Send success response
     sendSuccess(
