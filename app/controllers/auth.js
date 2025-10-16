@@ -315,7 +315,7 @@ exports.updateUserThroughChat = async (req, res, io) => {
       return sendErrorUnauthorized(res, {}, "Email is already in use.", 400, 103);
     }
 
-    await user.update({ user_fname, user_lname, email });
+    await user.update({ user_fname, user_lname, email, guest_account: false });
 
     // generate new access token
     const accessToken = generateAccessToken(user);
