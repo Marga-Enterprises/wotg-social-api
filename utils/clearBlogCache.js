@@ -288,11 +288,12 @@ exports.clearChatroomsCache = async (userId) => {
   try {
     console.log("🧹 Clearing chatrooms cache...");
 
+    // Match all keys for that user (any page or search term)
     const pattern = `chatrooms_user_${userId ? userId : '*'}_search_*`;
     const keys = await redisClient.keys(pattern);
 
     if (keys.length > 0) {
-      await redisClient.del(...keys); // Spread the array
+      await redisClient.del(...keys);
       console.log(`🗑️ Cleared ${keys.length} chatrooms cache entries.`);
     } else {
       console.log("ℹ️ No matching chatrooms cache keys found.");
@@ -303,3 +304,4 @@ exports.clearChatroomsCache = async (userId) => {
     console.error("❌ Error clearing chatrooms cache:", error);
   }
 };
+
