@@ -10,6 +10,7 @@ module.exports = (io) => {
     router.post('/forgot-password', authController.forgotPassword);
     router.post('/reset-password/:token', authController.resetPassword);
     router.post('/login-guest', (req, res) => authController.guestLogin(req, res, io));
+    router.put ('/update-through-chat/:userId', (req, res) => authController.updateUserThroughChat(req, res, io));
 
     return router;
 };

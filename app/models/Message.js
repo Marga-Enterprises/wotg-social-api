@@ -18,14 +18,20 @@ Message.init({
     },
     senderId: {
         type: DataTypes.INTEGER(11),
-        allowNull: false, // No foreign key constraint
+        allowNull: false,
     },
     chatroomId: {
         type: DataTypes.INTEGER(11),
-        allowNull: false, // No foreign key constraint
+        allowNull: false,
+    },
+    /** 👇 Added target_user_id field **/
+    targetUserId: {
+        type: DataTypes.INTEGER(11),
+        allowNull: true, // Optional, only for directed messages
+        field: 'target_user_id',
     },
     type: {
-        type: DataTypes.STRING(20), // or ENUM if you want strict values
+        type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'text',
     },
@@ -38,13 +44,16 @@ Message.init({
     sequelize,
     modelName: 'Message',
     tableName: 'messages',
-    timestamps: true, // Track when messages are sent
+    timestamps: true,
     underscored: true,
 });
 
-// Define relationships programmatically (no database constraints)
+// 🧩 Associations
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(Chatroom, { foreignKey: 'chatroomId', as: 'chatroom' });
 Chatroom.hasMany(Message, { foreignKey: 'chatroomId', as: 'messages' });
+
+// Optional relation if you want to access the "target user" object directly
+Message.belongsTo(User, { foreignKey: 'targetUserId', as: 'targetUser' });
 
 module.exports = Message;

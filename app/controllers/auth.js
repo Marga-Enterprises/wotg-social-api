@@ -25,7 +25,7 @@ const { clearChatroomsCache } = require("../../utils/clearBlogCache");
 
 // import sequelize instance
 const sequelize = require('../../config/db');
-
+const { Op } = require('sequelize');
 
 // Import utility functions
 const {
@@ -169,7 +169,7 @@ exports.loginUser = async (req, res, io) => {
 exports.createUser = async (req, res, io) => {
   const { user_fname, user_lname, email, user_gender = null, user_mobile_number, user_social_media } = req.body;
 
-  if (!user_fname || !user_lname || !email || !user_mobile_number) {
+  if (!user_fname || !user_lname || !email) {
     return sendError(res, {}, "All required fields must be filled.", 400, 101);
   }
 
@@ -178,7 +178,7 @@ exports.createUser = async (req, res, io) => {
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(user_mobile_number, 10);
+    const hashedPassword = await bcrypt.hash('12345678', 10);
 
     const [newUser, created] = await User.findOrCreate({
       where: { email },
@@ -282,6 +282,53 @@ exports.createUser = async (req, res, io) => {
   }
 };
 
+
+// controller to update user details through chat
+exports.updateUserThroughChat = async (req, res, io) => {
+  const { userId } = req.params;
+
+  const { user_fname, user_lname, email } = req.body;
+
+  if (!user_fname || !user_lname || !email) {
+    return sendError(res, {}, "All required fields must be filled.", 400, 101);
+  }
+
+  if (!validator.isEmail(email)) {
+    return sendError(res, {}, "Invalid email format.", 400, 102);
+  }
+
+  try {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      return sendErrorUnauthorized(res, {}, "User not found.", 404, 105);
+    }
+
+    const existingEmail = await User.findOne({
+      where: {
+        email,
+        id: { [Op.ne]: userId },
+      },
+    });
+
+    if (existingEmail) {
+      return sendErrorUnauthorized(res, {}, "Email is already in use.", 400, 103);
+    }
+
+    await user.update({ user_fname, user_lname, email });
+
+    // generate new access token
+    const accessToken = generateAccessToken(user);
+
+    // ✅ Clear Redis cache after user update
+    await clearUsersCache(); // clears all cached user list pages
+
+    return sendSuccess(res, { triggerRefresh: true, accessToken  }, "User updated successfully!", 200, 0);
+  } catch (err) {
+    console.error("Sequelize error:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+};
 
 // controller to handle user logout
 exports.logoutUser = async (req, res) => {
@@ -535,6 +582,7 @@ exports.guestLogin = async (req, res, io) => {
       chatroomId: chatroom.id,
       type: "text",
       category: "automated",
+      targetUserId: newUser.id,
       io,
     });
 
@@ -596,8 +644,8 @@ exports.guestLogin = async (req, res, io) => {
 };
 
 
-const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, io }) => {
-  const message = await Message.create({ content, senderId, chatroomId, type, category });
+const createAndEmitMessage = async ({ content, senderId, chatroomId, type, category, targetUserId, io }) => {
+  const message = await Message.create({ content, senderId, chatroomId, type, category, targetUserId });
 
   const fullMessage = await Message.findOne({
     where: { id: message.id },
