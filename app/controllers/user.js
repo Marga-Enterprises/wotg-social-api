@@ -14,65 +14,71 @@ const {
     removeFileFromSpaces
 } = require("../../utils/methods");
 
-const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache } = require('../../utils/clearBlogCache');
+const { clearPostsCache, clearCommentsCache, clearRepliesCache, clearNotificationsCache, clearUsersCache } = require('../../utils/clearBlogCache');
 
 exports.list = async (req, res) => {
-    let token = getToken(req.headers);
-    if (token) {
-        try {
-            // Extract the search query from request parameters (or query string)
-            const { search } = req.query;
+  let token = getToken(req.headers);
+  if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
 
-            let whereCondition = {};
-            let results = [];
+  try {
+    const { search, guestFilter, dateFrom, dateTo } = req.query;
 
-            if (search && search.trim() !== '') {
-                // Split the search query into individual words
-                const searchTerms = search.split(' ').filter(term => term.trim() !== '');
+    // Build dynamic where condition
+    const whereClause = {};
 
-                // Build dynamic conditions for each word (partial matches)
-                whereCondition = {
-                    [Op.or]: searchTerms.map(term => ({
-                        [Op.or]: [
-                            { user_fname: { [Op.like]: `%${term}%` } }, // Partial match in user_fname
-                            { user_lname: { [Op.like]: `%${term}%` } }, // Partial match in user_lname
-                        ],
-                    })),
-                };
-            }
+    // 🔍 Search by first name, last name, or email
+    if (search && search.trim() !== "") {
+      const searchTerms = search
+        .split(" ")
+        .filter((term) => term.trim() !== "");
 
-            // Fetch users with or without the search condition
-            results = await User.findAll({
-                where: whereCondition, // Empty `whereCondition` fetches all users
-                attributes: ['id', 'email', 'user_fname', 'user_lname'], // Only select these fields
-                order: search && search.trim() !== '' ? [] : [['user_fname', 'ASC']], // Sort alphabetically by user_fname if no search query
-            });
-
-            // Sort results: exact matches (full name) on top if a search query is provided
-            if (search && search.trim() !== '') {
-                results = results.sort((a, b) => {
-                    const fullNameA = `${a.user_fname} ${a.user_lname}`.toLowerCase();
-                    const fullNameB = `${b.user_fname} ${b.user_lname}`.toLowerCase();
-                    const searchLower = search.toLowerCase();
-
-                    // Exact match gets the highest priority
-                    if (fullNameA === searchLower) return -1;
-                    if (fullNameB === searchLower) return 1;
-
-                    // Otherwise, keep original order
-                    return 0;
-                });
-            }
-
-            return sendSuccess(res, results);
-        } catch (error) {
-            console.error('Error fetching users:', error);
-            return sendError(res, error, 'Failed to fetch users.');
-        }
-    } else {
-        return sendErrorUnauthorized(res, "", "Please login first.");
+      whereClause[Op.or] = searchTerms.flatMap((term) => [
+        { user_fname: { [Op.like]: `%${term}%` } },
+        { user_lname: { [Op.like]: `%${term}%` } },
+        { email: { [Op.like]: `%${term}%` } },
+      ]);
     }
+
+    // 🧑‍💻 Guest filter
+    if (guestFilter === "guest") {
+      whereClause.guest_account = true;
+    } else if (guestFilter === "nonguest") {
+      whereClause.guest_account = false;
+    }
+    // default = both → no guest filter applied
+
+    // 📅 Date filter
+    if (dateFrom && dateTo) {
+      whereClause.registered_at = {
+        [Op.between]: [new Date(dateFrom), new Date(dateTo)],
+      };
+    } else if (dateFrom) {
+      whereClause.registered_at = { [Op.gte]: new Date(dateFrom) };
+    } else if (dateTo) {
+      whereClause.registered_at = { [Op.lte]: new Date(dateTo) };
+    }
+
+    // 🧭 Fetch filtered users
+    const users = await User.findAll({
+      where: whereClause,
+      attributes: [
+        "id",
+        "email",
+        "user_fname",
+        "user_lname",
+        "guest_account",
+        "registered_at",
+      ],
+      order: [["registered_at", "DESC"]],
+    });
+
+    return sendSuccess(res, users);
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return sendError(res, error, "Failed to fetch users.");
+  }
 };
+
 
 exports.get = async (req, res) => {
     let token = getToken(req.headers);
@@ -102,65 +108,68 @@ exports.get = async (req, res) => {
 };
 
 exports.update = async (req, res) => {
-    uploadMemory.single("file")(req, res, async (err) => {
-        if (err) {
-            console.error("❌ Error uploading file:", err);
-            return sendError(res, err, "Failed to upload file.");
-        }
+  uploadMemory.single("file")(req, res, async (err) => {
+    if (err) {
+      console.error("❌ Error uploading file:", err);
+      return sendError(res, err, "Failed to upload file.");
+    }
 
-        let token = getToken(req.headers);
-        if (!token) {
-            return sendErrorUnauthorized(res, "", "Please login first.");
-        }
+    let token = getToken(req.headers);
+    if (!token) return sendErrorUnauthorized(res, "", "Please login first.");
 
-        const decodedToken = decodeToken(token);
+    const decodedToken = decodeToken(token);
 
+    try {
+      const { id } = req.params;
+      const { user_fname, user_lname, email, password } = req.body;
+      const user = await User.findByPk(id);
+
+      if (!user) return sendError(res, "", "User not found.");
+
+      if (decodedToken.user.id !== user.id) {
+        return sendErrorUnauthorized(res, "", "You are not authorized to update this user.");
+      }
+
+      // ✅ Delete old profile picture if new one uploaded
+      if (req.file && user.user_profile_picture) {
+        await removeFileFromSpaces("images", user.user_profile_picture);
+      }
+
+      // ✅ Update fields
+      if (user_fname) user.user_fname = user_fname;
+      if (user_lname) user.user_lname = user_lname;
+      if (email) user.email = email;
+      if (password) user.password = password;
+
+      // ✅ Upload new file to DigitalOcean Spaces
+      if (req.file) {
         try {
-            const { id } = req.params;
-            const { user_fname, user_lname, email, password } = req.body;
-            const user = await User.findByPk(id);
-
-            if (!user) {
-                return sendError(res, "", "User not found.");
-            }
-
-            if (decodedToken.user.id !== user.id) {
-                return sendErrorUnauthorized(res, "", "You are not authorized to update this user.");
-            }
-
-            // ✅ Delete old profile picture if new one uploaded
-            if (req.file && user.user_profile_picture) {
-                await removeFileFromSpaces('images', user.user_profile_picture)
-            }
-
-            // ✅ Update fields
-            if (user_fname) user.user_fname = user_fname;
-            if (user_lname) user.user_lname = user_lname;
-            if (email) user.email = email;
-            if (password) user.password = password;
-
-            if (req.file) {
-                try {
-                    const convertedFilename = await processImageToSpace(req.file);
-                    const processedImage = await uploadFileToSpaces(convertedFilename);
-                    // If image was converted to webp, use it; else fallback to original filename
-                    user.user_profile_picture = processedImage;
-                } catch (convErr) {
-                    console.error("❌ Image processing failed:", convErr);
-                    return sendError(res, convErr, "Image processing failed.");
-                }
-            }
-
-            await clearPostsCache();
-            await clearCommentsCache();
-            await clearRepliesCache();
-            await clearNotificationsCache();
-
-            await user.save();
-            return sendSuccess(res, user);
-        } catch (error) {
-            console.error("❌ Error updating user:", error);
-            return sendError(res, error, "Failed to update user.");
+          const convertedFilename = await processImageToSpace(req.file);
+          const processedImage = await uploadFileToSpaces(convertedFilename);
+          user.user_profile_picture = processedImage;
+        } catch (convErr) {
+          console.error("❌ Image processing failed:", convErr);
+          return sendError(res, convErr, "Image processing failed.");
         }
-    });
+      }
+
+      // ✅ Save changes
+      await user.save();
+
+      // ✅ Clear all relevant caches
+      await Promise.all([
+        clearPostsCache(),
+        clearCommentsCache(),
+        clearRepliesCache(),
+        clearNotificationsCache(),
+        clearUsersCache(user.id), // ✅ new addition
+      ]);
+
+      return sendSuccess(res, user);
+    } catch (error) {
+      console.error("❌ Error updating user:", error);
+      return sendError(res, error, "Failed to update user.");
+    }
+  });
 };
+

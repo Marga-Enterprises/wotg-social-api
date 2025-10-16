@@ -305,3 +305,49 @@ exports.clearChatroomsCache = async (userId) => {
   }
 };
 
+exports.clearUsersCache = async (userId) => {
+  try {
+    console.log("🧹 Clearing users cache...");
+
+    // ✅ Patterns aligned with the new cache key format
+    // users:page:${pageIndex}:size:${pageSize}:search:${search}:guest:${guestFilter}:from:${dateFrom}:to:${dateTo}
+
+    const basePattern = "users:page:*"; // matches all pagination
+    const searchPattern = "users:page:*:size:*:search*"; // covers search filters
+    const guestPattern = "users:page:*:size:*:guest*"; // covers guest filter
+    const dateFromPattern = "users:page:*:size:*:from*"; // covers dateFrom/dateTo filters
+
+    // Optional: specific user cache (e.g. user_15)
+    const userPattern = userId ? `user_${userId}` : null;
+
+    // Fetch all matching keys
+    const allBaseKeys = await redisClient.keys(basePattern);
+    const allSearchKeys = await redisClient.keys(searchPattern);
+    const allGuestKeys = await redisClient.keys(guestPattern);
+    const allDateKeys = await redisClient.keys(dateFromPattern);
+    const userKeys = userPattern ? await redisClient.keys(userPattern) : [];
+
+    // Merge and deduplicate
+    const allKeys = [
+      ...new Set([
+        ...allBaseKeys,
+        ...allSearchKeys,
+        ...allGuestKeys,
+        ...allDateKeys,
+        ...userKeys,
+      ]),
+    ];
+
+    // 🧹 Delete matching cache entries
+    if (allKeys.length > 0) {
+      await redisClient.del(...allKeys);
+      console.log(`🗑️ Cleared ${allKeys.length} users cache entries.`);
+    } else {
+      console.log("ℹ️ No matching users cache keys found.");
+    }
+
+    console.log("✅ Users cache cleared.");
+  } catch (error) {
+    console.error("❌ Error clearing users cache:", error);
+  }
+};
