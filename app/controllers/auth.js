@@ -286,7 +286,6 @@ exports.createUser = async (req, res, io) => {
 // controller to update user details through chat
 exports.updateUserThroughChat = async (req, res, io) => {
   const { userId } = req.params;
-
   const { user_fname, user_lname, email } = req.body;
 
   if (!user_fname || !user_lname || !email) {
@@ -315,17 +314,61 @@ exports.updateUserThroughChat = async (req, res, io) => {
       return sendErrorUnauthorized(res, {}, "Email is already in use.", 400, 103);
     }
 
+    // ✅ Update user info and mark as registered
     await user.update({ user_fname, user_lname, email, guest_account: false });
 
-    // generate new access token
+    // ✅ Generate new access token
     const accessToken = generateAccessToken(user);
 
-    // ✅ Clear Redis cache after user update
-    await clearUsersCache(); // clears all cached user list pages
+    // ✅ Clear Redis cache (important for fresh dashboard data)
+    await clearUsersCache();
 
-    return sendSuccess(res, { triggerRefresh: true, accessToken  }, "User updated successfully!", 200, 0);
+    // ✅ Find user’s chatroom (where they were welcomed)
+    const chatroom = await Chatroom.findOne({ where: { target_user_id: user.id } });
+
+    // ✅ Prepare dynamic message
+    const menupageLink =
+      process.env.NODE_ENV === "development"
+        ? `http://localhost:3000/menu`
+        : `https://community.wotgonline.com/menu`;
+
+    const botState = { firstName: user_fname, lastName: user_lname, email };
+
+    const messageContent = `Salamat, ${botState.firstName} ${botState.lastName}! 👋  
+Kumpleto na ang iyong registration.  
+
+Narito ang iyong mga detalye:
+📧 Email: ${botState.email}
+🔑 Password: 12345678  
+
+Pwede mong bisitahin ang ating community page dito:
+${menupageLink}
+
+May volunteer na lalapit sa iyo para makausap ka at ipaliwanag ang mga susunod na hakbang. 🙏`;
+
+    // ✅ Emit confirmation message from bot
+    if (chatroom) {
+      await createAndEmitMessage({
+        content: messageContent,
+        senderId: 10, // bot/admin user
+        chatroomId: chatroom.id,
+        type: "text",
+        category: "automated",
+        targetUserId: user.id,
+        io,
+      });
+    }
+
+    // ✅ Send success response to frontend
+    return sendSuccess(
+      res,
+      { triggerRefresh: true, accessToken },
+      "User updated successfully and confirmation message sent!",
+      200,
+      0
+    );
   } catch (err) {
-    console.error("Sequelize error:", err);
+    console.error("Update User Through Chat Error:", err);
     return res.status(500).json({ error: "Internal server error." });
   }
 };
@@ -527,6 +570,7 @@ exports.guestLogin = async (req, res, io) => {
       name: chatroomName,
       type: "group",
       welcome_chat: true,
+      target_user_id: newUser.id,
     });
 
     const participantsData = participants.map((userId) => ({

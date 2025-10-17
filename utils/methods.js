@@ -60,6 +60,7 @@ exports.generateAccessToken = (user) => {
         user_fname: user.user_fname,
         user_lname: user.user_lname,
         user_profile_picture: user.user_profile_picture,
+        guest_account: user.guest_account,
         email: user.email,
       },
     },
