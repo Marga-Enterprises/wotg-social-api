@@ -20,6 +20,8 @@ const Subscription = require('../models/Subscription'); // Import Message model
 const Participant = require('../models/Participant'); // Import Message model
 const MessageReadStatus = require('../models/MessageReadStatus'); // Import Message model
 
+const { sendNotification } = require('../../utils/sendNotification');
+
 // clear cache
 const { clearChatroomsCache } = require("../../utils/clearBlogCache");
 
@@ -501,7 +503,7 @@ exports.guestLogin = async (req, res, io) => {
   try {
     const user_fname = "Guest";
 
-    // Generate a unique numeric lname
+    // 🔹 Generate a unique numeric lname (Guest ID)
     let user_lname;
     while (true) {
       const randomNumber = Math.floor(100000 + Math.random() * 900000).toString();
@@ -518,7 +520,7 @@ exports.guestLogin = async (req, res, io) => {
     const plainPassword = crypto.randomBytes(8).toString("hex");
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-    // ✅ Create or find the guest
+    // 🧍 Create or find guest user
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
@@ -528,7 +530,7 @@ exports.guestLogin = async (req, res, io) => {
         password: hashedPassword,
         user_role: "guest",
         user_gender: null,
-        guest_account: true, // ✅ ensure proper flag
+        guest_account: true,
       },
     });
 
@@ -536,49 +538,50 @@ exports.guestLogin = async (req, res, io) => {
       return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
     }
 
-    // ✅ Safety net: ensure guest_account is TRUE (in case schema default fails)
+    // ✅ Safety net: ensure guest_account = true
     if (!newUser.guest_account) {
       await newUser.update({ guest_account: true });
     }
 
-    // 🧹 Clear all cached user lists (important for dashboards)
+    // 🧹 Clear cached user lists
     try {
-      await clearUsersCache(); // clears all cached user list pages
-      console.log(`🧹 Cleared users cache after guest creation (ID: ${newUser.id}).`);
+      await clearUsersCache();
+      console.log(`🧹 Cleared users cache after guest creation (ID: ${newUser.id})`);
     } catch (cacheErr) {
       console.warn("⚠️ Failed to clear users cache:", cacheErr.message);
     }
 
-    // Add default chatrooms
+    // 👥 Add guest to default chatrooms (like global or announcements)
     const chatroomIds = [5, 7];
     const chatrooms = await Chatroom.findAll({ where: { id: chatroomIds } });
 
     for (const chatroom of chatrooms) {
       await Participant.findOrCreate({
         where: { chatRoomId: chatroom.id, userId: newUser.id },
-        defaults: { userName: `${newUser.user_fname} ${newUser.user_lname}` },
+        defaults: { userName: `${user_fname} ${user_lname}` },
       });
     }
 
+    // 🔐 Generate token
     const accessToken = generateAccessToken(newUser);
-    let chatroomLoginId = 0;
-    let participants = [newUser.id, 10, 345, 348, 251, 49];
 
-    const chatroomName = `Welcome Chat - ${newUser.user_fname} ${newUser.user_lname}`;
+    // 🧩 Create a unique “Welcome Chat”
+    const adminIds = [10, 345, 348, 251, 49];
+    const participants = [newUser.id, ...adminIds];
 
     const chatroom = await Chatroom.create({
-      name: chatroomName,
+      name: `Welcome Chat - ${user_fname} ${user_lname}`,
       type: "group",
       welcome_chat: true,
       target_user_id: newUser.id,
     });
 
-    const participantsData = participants.map((userId) => ({
-      userId,
-      chatRoomId: chatroom.id,
-    }));
-
-    await Participant.bulkCreate(participantsData);
+    await Participant.bulkCreate(
+      participants.map((uid) => ({
+        userId: uid,
+        chatRoomId: chatroom.id,
+      }))
+    );
 
     const chatroomParticipants = await Participant.findAll({
       where: { chatRoomId: chatroom.id },
@@ -595,39 +598,35 @@ exports.guestLogin = async (req, res, io) => {
     const chatroomWithParticipants = {
       id: chatroom.id,
       name: chatroom.name,
-      type: "group",
-      createdAt: chatroom.createdAt,
-      updatedAt: chatroom.updatedAt,
-      messages: [],
+      type: chatroom.type,
       Participants: chatroomParticipants,
-      unreadCount: 0,
       welcome_chat: true,
+      messages: [],
+      unreadCount: 0,
       hasUnread: false,
     };
 
-    chatroomLoginId = chatroom.id;
-
-    // Clear chatrooms cache for all participants
-    for (const userId of participants) {
-      await clearChatroomsCache(userId);
+    // 🧹 Clear cache for all participants
+    for (const uid of participants) {
+      await clearChatroomsCache(uid);
     }
 
-    if (io) {
-      io.emit("new_chatroom", chatroomWithParticipants);
-    }
+    // 🔔 Broadcast new chatroom
+    if (io) io.emit("new_chatroom", chatroomWithParticipants);
 
+    // 💬 Send initial automated message
     await createAndEmitMessage({
       content: `Hello kapatid! 👋  
-      Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.  
-      Dito ay makikita mo ang mga inspiring features gaya ng *daily devotions, Bible, journal, community feeds,* at marami pang iba.  
-      Maaari ka ring makipag-ugnayan sa amin dito mismo!
+Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.  
+Dito ay makikita mo ang mga inspiring features gaya ng *daily devotions, Bible, journal, community feeds,* at marami pang iba.  
+Maaari ka ring makipag-ugnayan sa amin dito mismo!
 
-      Para makapagsimula, i-click mo muna ang **Sign Up** button sa ibaba at ilagay ang iyong:
-      • First Name  
-      • Last Name  
-      • Email Address  
+Para makapagsimula, i-click mo muna ang **Sign Up** button sa ibaba at ilagay ang iyong:
+• First Name  
+• Last Name  
+• Email Address  
 
-      Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang makilala pa nang mas malalim ang Panginoon. 🙏`,
+Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang makilala pa nang mas malalim ang Panginoon. 🙏`,
       senderId: 10,
       chatroomId: chatroom.id,
       type: "text",
@@ -636,17 +635,15 @@ exports.guestLogin = async (req, res, io) => {
       io,
     });
 
-
-    // ✅ Send success response
+    // ✅ Send response
     sendSuccess(
       res,
-      { accessToken, chatroomLoginId },
+      { accessToken, chatroomLoginId: chatroom.id },
       "Guest account created successfully!",
-      201,
-      0
+      201
     );
 
-    // 🔔 Send admin notifications (async)
+    // 📧 Send admin email alerts (non-blocking)
     const adminEmails =
       process.env.NODE_ENV === "development"
         ? ["pillorajem10@gmail.com"]
@@ -658,35 +655,60 @@ exports.guestLogin = async (req, res, io) => {
             "pillorajem10@gmail.com",
           ];
 
-    const chatroomWithGuestLink =
+    const guestLink =
       process.env.NODE_ENV === "development"
-        ? `http://localhost:3000/chat?chat=${chatroomLoginId}`
-        : `https://community.wotgonline.com/chat?chat=${chatroomLoginId}`;
-
-    const mailOptions = (to) => ({
-      from: process.env.EMAIL_USER,
-      to,
-      subject: "🚨 New Guest Account Created",
-      text: `
-        A new guest account has joined the platform and has been added to the WOTG Admin chatroom.
-
-        Guest Details:
-        - Name: ${user_fname} ${user_lname}
-        - Email: ${email}
-
-        You can directly view the chatroom here:
-        ${chatroomWithGuestLink}
-
-        Please ensure to monitor guest activities accordingly.
-
-        — WOTG System Notification
-      `.trim(),
-    });
+        ? `http://localhost:3000/chat?chat=${chatroom.id}`
+        : `https://community.wotgonline.com/chat?chat=${chatroom.id}`;
 
     for (const admin of adminEmails) {
-      transporter.sendMail(mailOptions(admin)).catch((err) => {
-        console.error(`Email send error to ${admin}:`, err);
-      });
+      transporter
+        .sendMail({
+          from: process.env.EMAIL_USER,
+          to: admin,
+          subject: "🚨 New Guest Account Created",
+          text: `
+A new guest has joined WOTG!
+
+👤 Name: ${user_fname} ${user_lname}
+📧 Email: ${email}
+
+View chatroom:
+${guestLink}
+
+— WOTG System Notification
+        `.trim(),
+        })
+        .catch((err) => console.error(`Email send error to ${admin}:`, err));
+    }
+
+    // 🔔 Push notifications for admins (IDs 10, 49, 251)
+    const pushAdminIds = [10, 49, 251];
+    for (const adminId of pushAdminIds) {
+      const subscriptions = await Subscription.findAll({ where: { userId: adminId } });
+
+      for (const sub of subscriptions) {
+        try {
+          const subData =
+            typeof sub.subscription === "string"
+              ? JSON.parse(sub.subscription)
+              : sub.subscription;
+          const fcmToken = subData?.fcmToken;
+          if (fcmToken) {
+            await sendNotification(
+              fcmToken,
+              "🚨 New Guest Account Created",
+              `A new guest (${user_fname} ${user_lname}) just joined Word on the Go.`,
+              {
+                chatroomId: chatroom.id.toString(),
+                type: "guest_joined",
+                url: guestLink,
+              }
+            );
+          }
+        } catch (err) {
+          console.error(`❌ Push notification error for admin ${adminId}:`, err.message);
+        }
+      }
     }
   } catch (err) {
     console.error("Guest Login Error:", err);
