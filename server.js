@@ -46,6 +46,9 @@ const io = new Server(server, {
     transports: ["websocket", "polling"],
 });
 
+// schedulers
+require("./app/schedulers/cleanupInactiveChatrooms");
+
 // Middleware
 app.use(express.json({ limit: '10240mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10240mb' }));
