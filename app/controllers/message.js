@@ -682,8 +682,8 @@ Mag-reply na ngayon 👉 ${chatUrl}
   if (chatroom && chatroom.target_user_id) {
     const user = await User.findOne({ where: { id: chatroom.target_user_id } });
 
-    if (user && user.user_role === "guest" && user.guest_status !== "In Contact") {
-      await user.update({ guest_status: "In Contact" });
+    if (user && user.user_role === "guest" && user.guest_status !== "in_contact") {
+      await user.update({ guest_status: "in_contact" });
       await clearUsersCache(user.id);
     }
   }
