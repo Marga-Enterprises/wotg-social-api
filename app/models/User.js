@@ -151,7 +151,11 @@ User.init({
         defaultValue: false,
         comment: 'Indicates if the user is a guest account',
     },
-
+    guest_status: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        defaultValue: null,
+    },
 }, {
     sequelize,
     modelName: 'User',

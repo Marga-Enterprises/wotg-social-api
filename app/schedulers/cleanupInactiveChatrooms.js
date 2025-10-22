@@ -8,9 +8,10 @@ const Message = require("../models/Message");
 const MessageReactions = require("../models/MessageReactions");
 const MessageReadStatus = require("../models/MessageReadStatus");
 const Participant = require("../models/Participant");
+const User = require("../models/User");
 
 // 🧠 Import cache clearer
-const { clearChatroomsCache } = require("../../utils/clearBlogCache");
+const { clearChatroomsCache, clearUsersCache } = require("../../utils/clearBlogCache");
 
 // 🕒 Schedule: Every day at 1:00 AM (Manila time)
 cron.schedule(
@@ -48,6 +49,14 @@ cron.schedule(
           },
           transaction,
         });
+
+        const user = await User.findByPk(chat.target_user_id);
+
+        await user.update({
+          guest_status: hasRecentMessage ? "active" : "abandoned",
+        });
+
+        await clearUsersCache(chat.target_user_id);
 
         if (!hasRecentMessage) {
           chatroomsToDelete.push(chat.id);
