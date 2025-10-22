@@ -13,6 +13,9 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require("nodemailer");
 const { sendNotification } = require('../../utils/sendNotification'); // Import FCM notification function
 
+// clear cache
+const { clearUsersCache } = require("../../utils/clearBlogCache");
+
 const {
     sendError,
     sendSuccess,
@@ -671,6 +674,18 @@ Mag-reply na ngayon 👉 ${chatUrl}
     );
   } else {
     console.log(`ℹ️ Email notification skipped (recipients > 4): ${recipients.length} users`);
+  }
+
+  // 9 Update the user guest status if chatroom has target_user_id
+  const chatroom = await Chatroom.findOne({ where: { id: chatroomId } });
+
+  if (chatroom && chatroom.target_user_id) {
+    const user = await User.findOne({ where: { id: chatroom.target_user_id } });
+
+    if (user && user.user_role === "guest" && user.guest_status !== "In Contact") {
+      await user.update({ guest_status: "In Contact" });
+      await clearUsersCache(user.id);
+    }
   }
 
   return fullMessage;

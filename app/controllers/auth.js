@@ -531,6 +531,7 @@ exports.guestLogin = async (req, res, io) => {
         user_role: "guest",
         user_gender: null,
         guest_account: true,
+        guest_status: "No Contact"
       },
     });
 
