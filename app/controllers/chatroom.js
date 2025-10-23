@@ -266,13 +266,9 @@ exports.createChatroom = async (req, res, io) => {
                 attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
             });
             
-            console.log('[[[[[[[[[[[[[[[[[[[[[[TARGET USER ID:]]]]]]]]]]]]]]]]]]]]]]', target_user_id);
-            console.log('[[[[[[[[[[[[[[[[[[[[PARTICIPANTS:]]]]]]]]]]]]]]]]]]]]', participants);
 
             // check if target user is one of the participants
             if (target_user_id && participants.includes(target_user_id)) {
-                console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[🔔 Updating guest status for target user:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', target_user_id);
-
                 const targetUser = await User.findByPk(target_user_id);
 
                 await targetUser.update({
@@ -311,6 +307,7 @@ exports.createChatroom = async (req, res, io) => {
             // Return the success response using sendSuccess, chatroom data will be passed directly
             return sendSuccess(res, chatroomWithParticipants); // Automatically handles the JSON response
         } catch (error) {
+            console.error("[[[[[[[[[[[[[[[Error creating chatroom:]]]]]]]]]]]]]]]", error);
             return sendError(res, error, 'Failed to create chatroom.');
         }
     } else {
