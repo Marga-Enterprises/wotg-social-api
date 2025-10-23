@@ -186,133 +186,131 @@ exports.getAllChatrooms = async (req, res) => {
 
 
 // Create a new chatroom
+// Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
-    console.log("🟢 createChatroom controller called");
+  console.log("🟢 createChatroom controller called");
 
-    let token = getToken(req.headers);
-    if (token) {
-        const { name, participants, target_user_id } = req.body; // Get name, type, and participants from the request body
+  let token = getToken(req.headers);
+  if (!token) {
+    return sendErrorUnauthorized(res, "", "Please login first.");
+  }
 
-        // Validate the participants
-        if (!Array.isArray(participants) || participants.length <= 1) {
-            return sendError(res, null, "At least two participant is required.");
-        }
+  const { name, participants, target_user_id } = req.body;
 
-        try {
-            let chatroomName = name;
+  if (!Array.isArray(participants) || participants.length <= 1) {
+    return sendError(res, null, "At least two participants are required.");
+  }
 
-            // Check if participants are exactly 2
-            if (participants.length === 2) {
-                const existingChatroom = await Participant.findAll({
-                    where: { userId: participants }, // Filter participants matching the provided IDs
-                    attributes: ['chatRoomId'], // Only select the chatRoomId
-                    include: [
-                        {
-                            model: Chatroom, // Join with the Chatroom model
-                            attributes: [], // Exclude Chatroom fields from the result
-                            where: { type: 'private' }, // Only include private chatrooms
-                        },
-                    ],
-                    group: ['chatRoomId'], // Group by chatRoomId
-                    having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`), // Ensure exactly 2 participants in the same chatroom
-                });
+  try {
+    let chatroomName = name;
 
-                if (existingChatroom.length > 0) {
-                    // Return an error if a chatroom already exists for these participants
-                    return sendError(res, null, "A chatroom already exists for these participants.");
-                }
+    // ✅ Check for existing private chatroom between same two participants
+    if (participants.length === 2) {
+      const existingChatroom = await Participant.findAll({
+        where: { userId: participants },
+        attributes: ['chatRoomId'],
+        include: [{
+          model: Chatroom,
+          attributes: [],
+          where: { type: 'private' },
+        }],
+        group: ['chatRoomId'],
+        having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`),
+      });
 
-                // Fetch user details to construct the chatroom name
-                const users = await User.findAll({
-                    where: { id: participants },
-                    attributes: ['user_fname', 'user_lname'], // Only select the required fields
-                });
+      if (existingChatroom.length > 0) {
+        console.warn("⚠️ Chatroom already exists for these participants.");
+        return sendError(res, null, "A chatroom already exists for these participants.");
+      }
 
-                // Construct the chatroom name using the participants' full names
-                chatroomName = users
-                    .map((user) => `${user.user_fname} ${user.user_lname}`)
-                    .join(', ');
-            }
+      const users = await User.findAll({
+        where: { id: participants },
+        attributes: ['user_fname', 'user_lname'],
+      });
 
-            // Determine chatroom type based on the number of participants
-            const chatroomType = participants.length <= 2 ? "private" : "group";
-
-            // Create a new chatroom with the determined type and name
-            const chatroom = await Chatroom.create({ 
-                name: chatroomName, 
-                type: chatroomType, 
-                target_user_id: target_user_id || null,
-            });
-
-            // Create participants for the chatroom
-            const participantsData = participants.map((userId) => ({
-                userId,
-                chatRoomId: chatroom.id, // Link the participant to the newly created chatroom
-            }));
-
-            // Insert participants into the Participant model
-            await Participant.bulkCreate(participantsData);
-
-            // Fetch participants' user details to include in the response
-            const chatroomParticipants = await Participant.findAll({
-                where: { chatRoomId: chatroom.id },
-                include: [
-                    {
-                        model: User,
-                        as: 'user',
-                        attributes: ['id', 'user_fname', 'user_lname', 'email'],
-                    },
-                ],
-                attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
-            });
-            
-
-            // check if target user is one of the participants
-            if (target_user_id && participants.includes(target_user_id)) {
-                const targetUser = await User.findByPk(target_user_id);
-
-                await targetUser.update({
-                    guest_status: 'in_contact'
-                })
-
-                await clearUsersCache(target_user_id);
-            };
-
-            // Prepare the chatroom data with participants to be returned
-            const chatroomWithParticipants = {
-                id: chatroom.id,
-                name: chatroom.name,
-                type: chatroomType, // Use the dynamically determined type
-                createdAt: chatroom.createdAt,
-                updatedAt: chatroom.updatedAt,
-                messages: [], // No messages yet for the newly created chatroom
-                Participants: chatroomParticipants,
-                unreadCount: 0, // Initially, no unread messages
-                hasUnread: false, // No unread messages
-            };
-
-            // Emit a real-time event for the new chatroom with participants
-            if (io) {
-                io.emit('new_chatroom', chatroomWithParticipants);
-            }
-
-            // clear cache for the participants as well as the creator
-            const userDecoded = decodeToken(token);
-            const affectedUserIds = new Set([...participants, userDecoded.user.id]); // Use Set to avoid duplicates
-
-            for (const userId of affectedUserIds) {
-                await clearChatroomsCache(userId);
-            }
-
-            // Return the success response using sendSuccess, chatroom data will be passed directly
-            return sendSuccess(res, chatroomWithParticipants); // Automatically handles the JSON response
-        } catch (error) {
-            console.error("[[[[[[[[[[[[[[[Error creating chatroom:]]]]]]]]]]]]]]]", error);
-            return sendError(res, error, 'Failed to create chatroom.');
-        }
-    } else {
-        return sendErrorUnauthorized(res, "", "Please login first.");
+      chatroomName = users
+        .map((u) => `${u.user_fname} ${u.user_lname}`)
+        .join(', ');
     }
+
+    const chatroomType = participants.length <= 2 ? "private" : "group";
+
+    // ✅ Create chatroom
+    const chatroom = await Chatroom.create({
+      name: chatroomName,
+      type: chatroomType,
+      target_user_id: target_user_id || null,
+    });
+
+    // ✅ Create participants
+    const participantsData = participants.map((userId) => ({
+      userId,
+      chatRoomId: chatroom.id,
+    }));
+
+    await Participant.bulkCreate(participantsData);
+
+    // ✅ Fetch all participants with user details
+    const chatroomParticipants = await Participant.findAll({
+      where: { chatRoomId: chatroom.id },
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'user_fname', 'user_lname', 'email'],
+      }],
+      attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+    });
+
+    // ✅ Update target user's guest status safely
+    if (target_user_id && participants.includes(target_user_id)) {
+      const targetUser = await User.findByPk(target_user_id);
+      if (targetUser) {
+        await targetUser.update({ guest_status: 'in_contact' }).catch(err => {
+          console.warn("⚠️ Failed to update guest status:", err.message);
+        });
+        await clearUsersCache(target_user_id).catch(err => {
+          console.warn("⚠️ clearUsersCache failed:", err.message);
+        });
+      }
+    }
+
+    // ✅ Construct response object
+    const chatroomWithParticipants = {
+      id: chatroom.id,
+      name: chatroom.name,
+      type: chatroomType,
+      createdAt: chatroom.createdAt,
+      updatedAt: chatroom.updatedAt,
+      messages: [],
+      Participants: chatroomParticipants,
+      unreadCount: 0,
+      hasUnread: false,
+    };
+
+    // ✅ Emit socket event safely
+    if (io) {
+      io.emit('new_chatroom', chatroomWithParticipants);
+    }
+
+    // ✅ Clear cache for all affected users safely
+    const userDecoded = decodeToken(token);
+    const affectedUserIds = new Set([...participants, userDecoded.user.id]);
+
+    for (const userId of affectedUserIds) {
+      try {
+        await clearChatroomsCache(userId);
+      } catch (cacheErr) {
+        console.warn(`⚠️ clearChatroomsCache failed for user ${userId}:`, cacheErr.message);
+      }
+    }
+
+    console.log("✅ Chatroom created successfully:", chatroom.id);
+    return sendSuccess(res, chatroomWithParticipants);
+
+  } catch (error) {
+    console.error("❌ Error creating chatroom:", error.message);
+    return sendError(res, error, "Failed to create chatroom.");
+  }
 };
 
 
