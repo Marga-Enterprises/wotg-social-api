@@ -9,7 +9,7 @@ const MessageReadStatus = require('../models/MessageReadStatus');
 const redisClient = require("../../config/redis");
 
 // clear cache
-const { clearChatroomsCache } = require("../../utils/clearBlogCache");
+const { clearChatroomsCache, clearUsersCache } = require("../../utils/clearBlogCache");
 
 const uploadMemory = require('./uploadMemory');
 const { uploadFileToSpaces } = require('./spaceUploader');
@@ -187,9 +187,11 @@ exports.getAllChatrooms = async (req, res) => {
 
 // Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
+    console.log("🟢 createChatroom controller called");
+
     let token = getToken(req.headers);
     if (token) {
-        const { name, participants } = req.body; // Get name, type, and participants from the request body
+        const { name, participants, target_user_id } = req.body; // Get name, type, and participants from the request body
 
         // Validate the participants
         if (!Array.isArray(participants) || participants.length <= 1) {
@@ -236,7 +238,11 @@ exports.createChatroom = async (req, res, io) => {
             const chatroomType = participants.length <= 2 ? "private" : "group";
 
             // Create a new chatroom with the determined type and name
-            const chatroom = await Chatroom.create({ name: chatroomName, type: chatroomType });
+            const chatroom = await Chatroom.create({ 
+                name: chatroomName, 
+                type: chatroomType, 
+                target_user_id: target_user_id || null,
+            });
 
             // Create participants for the chatroom
             const participantsData = participants.map((userId) => ({
@@ -259,6 +265,22 @@ exports.createChatroom = async (req, res, io) => {
                 ],
                 attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
             });
+            
+            console.log('[[[[[[[[[[[[[[[[[[[[[[TARGET USER ID:]]]]]]]]]]]]]]]]]]]]]]', target_user_id);
+            console.log('[[[[[[[[[[[[[[[[[[[[PARTICIPANTS:]]]]]]]]]]]]]]]]]]]]', participants);
+
+            // check if target user is one of the participants
+            if (target_user_id && participants.includes(target_user_id)) {
+                console.log('[[[[[[[[[[[[[[[[[[[[[[[[[[[[[🔔 Updating guest status for target user:]]]]]]]]]]]]]]]]]]]]]]]]]]]]]', target_user_id);
+
+                const targetUser = await User.findByPk(target_user_id);
+
+                await targetUser.update({
+                    guest_status: 'in_contact'
+                })
+
+                await clearUsersCache(target_user_id);
+            };
 
             // Prepare the chatroom data with participants to be returned
             const chatroomWithParticipants = {

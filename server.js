@@ -39,8 +39,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: process.env.NODE_ENV === "production"
-            ? ["https://community.wotgonline.com", "https://www.wotgonline.com", "https://wotgonline.com", "https://live.wotgonline.com"]
-            : ["http://localhost:3000"],
+            ? ["https://community.wotgonline.com", "https://www.wotgonline.com", "https://management.wotgonline.com"]
+            : ["http://localhost:3000", "http://localhost:5123"],
         methods: ["GET", "POST", "DELETE", "PUT"],
     },
     transports: ["websocket", "polling"],
