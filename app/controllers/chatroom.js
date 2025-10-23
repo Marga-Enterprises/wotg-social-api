@@ -186,17 +186,17 @@ exports.getAllChatrooms = async (req, res) => {
 
 
 // Create a new chatroom
-// Create a new chatroom
 exports.createChatroom = async (req, res, io) => {
   console.log("🟢 createChatroom controller called");
 
-  let token = getToken(req.headers);
+  const token = getToken(req.headers);
   if (!token) {
     return sendErrorUnauthorized(res, "", "Please login first.");
   }
 
   const { name, participants, target_user_id } = req.body;
 
+  // ✅ Validate participants
   if (!Array.isArray(participants) || participants.length <= 1) {
     return sendError(res, null, "At least two participants are required.");
   }
@@ -204,17 +204,19 @@ exports.createChatroom = async (req, res, io) => {
   try {
     let chatroomName = name;
 
-    // ✅ Check for existing private chatroom between same two participants
+    // ✅ Check for existing private chatroom
     if (participants.length === 2) {
       const existingChatroom = await Participant.findAll({
         where: { userId: participants },
-        attributes: ['chatRoomId'],
-        include: [{
-          model: Chatroom,
-          attributes: [],
-          where: { type: 'private' },
-        }],
-        group: ['chatRoomId'],
+        attributes: ["chatRoomId"],
+        include: [
+          {
+            model: Chatroom,
+            attributes: [],
+            where: { type: "private" },
+          },
+        ],
+        group: ["chatRoomId"],
         having: sequelize.literal(`COUNT(DISTINCT user_id) = 2`),
       });
 
@@ -223,14 +225,13 @@ exports.createChatroom = async (req, res, io) => {
         return sendError(res, null, "A chatroom already exists for these participants.");
       }
 
+      // 🧩 Build readable chatroom name
       const users = await User.findAll({
         where: { id: participants },
-        attributes: ['user_fname', 'user_lname'],
+        attributes: ["user_fname", "user_lname"],
       });
 
-      chatroomName = users
-        .map((u) => `${u.user_fname} ${u.user_lname}`)
-        .join(', ');
+      chatroomName = users.map(u => `${u.user_fname} ${u.user_lname}`).join(", ");
     }
 
     const chatroomType = participants.length <= 2 ? "private" : "group";
@@ -243,38 +244,40 @@ exports.createChatroom = async (req, res, io) => {
     });
 
     // ✅ Create participants
-    const participantsData = participants.map((userId) => ({
+    const participantsData = participants.map(userId => ({
       userId,
       chatRoomId: chatroom.id,
     }));
-
     await Participant.bulkCreate(participantsData);
 
-    // ✅ Fetch all participants with user details
+    // ✅ Fetch all participants (plain objects only)
     const chatroomParticipants = await Participant.findAll({
       where: { chatRoomId: chatroom.id },
-      include: [{
-        model: User,
-        as: 'user',
-        attributes: ['id', 'user_fname', 'user_lname', 'email'],
-      }],
-      attributes: ['id', 'chatRoomId', 'userId', 'userName', 'joinedAt'],
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "user_fname", "user_lname", "email"],
+        },
+      ],
+      attributes: ["id", "chatRoomId", "userId", "userName", "joinedAt"],
     });
+    const participantsPlain = chatroomParticipants.map(p => p.get({ plain: true }));
 
-    // ✅ Update target user's guest status safely
+    // ✅ Update guest status if applicable
     if (target_user_id && participants.includes(target_user_id)) {
-      const targetUser = await User.findByPk(target_user_id);
-      if (targetUser) {
-        await targetUser.update({ guest_status: 'in_contact' }).catch(err => {
-          console.warn("⚠️ Failed to update guest status:", err.message);
-        });
-        await clearUsersCache(target_user_id).catch(err => {
-          console.warn("⚠️ clearUsersCache failed:", err.message);
-        });
+      try {
+        const targetUser = await User.findByPk(target_user_id);
+        if (targetUser) {
+          await targetUser.update({ guest_status: "in_contact" });
+          await clearUsersCache(target_user_id);
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to update guest status or clear user cache:", err.message);
       }
     }
 
-    // ✅ Construct response object
+    // ✅ Build clean response object
     const chatroomWithParticipants = {
       id: chatroom.id,
       name: chatroom.name,
@@ -282,36 +285,44 @@ exports.createChatroom = async (req, res, io) => {
       createdAt: chatroom.createdAt,
       updatedAt: chatroom.updatedAt,
       messages: [],
-      Participants: chatroomParticipants,
+      Participants: participantsPlain,
       unreadCount: 0,
       hasUnread: false,
     };
 
-    // ✅ Emit socket event safely
-    if (io) {
-      io.emit('new_chatroom', chatroomWithParticipants);
+    // ✅ Emit event safely
+    try {
+      if (io) io.emit("new_chatroom", chatroomWithParticipants);
+    } catch (emitErr) {
+      console.warn("⚠️ Socket emit failed (non-critical):", emitErr.message);
     }
 
-    // ✅ Clear cache for all affected users safely
+    // ✅ Decode token safely
     const userDecoded = decodeToken(token);
-    const affectedUserIds = new Set([...participants, userDecoded.user.id]);
+    const creatorId = userDecoded?.user?.id || userDecoded?.id; // works in both dev & prod
 
-    for (const userId of affectedUserIds) {
-      try {
-        await clearChatroomsCache(userId);
-      } catch (cacheErr) {
-        console.warn(`⚠️ clearChatroomsCache failed for user ${userId}:`, cacheErr.message);
+    if (!creatorId) {
+      console.warn("⚠️ Could not determine creator ID from token, skipping cache clear.");
+    } else {
+      // ✅ Clear cache for all affected users
+      const affectedUserIds = new Set([...participants, creatorId]);
+      for (const userId of affectedUserIds) {
+        try {
+          await clearChatroomsCache(userId);
+        } catch (cacheErr) {
+          console.warn(`⚠️ clearChatroomsCache failed for user ${userId}:`, cacheErr.message);
+        }
       }
     }
 
     console.log("✅ Chatroom created successfully:", chatroom.id);
     return sendSuccess(res, chatroomWithParticipants);
-
   } catch (error) {
-    console.error("❌ Error creating chatroom:", error.message);
+    console.error("❌ Error creating chatroom:", error);
     return sendError(res, error, "Failed to create chatroom.");
   }
 };
+
 
 
 exports.addParticipants = async (req, res, io) => {
