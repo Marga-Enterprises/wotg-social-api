@@ -647,13 +647,12 @@ Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang
     // 📧 Send admin email alerts (non-blocking)
     const adminEmails =
       process.env.NODE_ENV === "development"
-        ? ["pillorajem10@gmail.com"]
+        ? ["pillorajem20@gmail.com"]
         : [
             "michael.marga@gmail.com",
             "lamatamarvin83@gmail.com",
             "engrjoelmlusung@gmail.com",
             "donmarper1975@gmail.com",
-            "pillorajem10@gmail.com",
           ];
 
     const guestLink =
