@@ -666,15 +666,15 @@ Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang
           to: admin,
           subject: "🚨 New Guest Account Created",
           text: `
-A new guest has joined WOTG!
+            A new guest has joined WOTG!
 
-👤 Name: ${user_fname} ${user_lname}
-📧 Email: ${email}
+            👤 Name: ${user_fname} ${user_lname}
+            📧 Email: ${email}
 
-View chatroom:
-${guestLink}
+            View chatroom:
+            ${guestLink}
 
-— WOTG System Notification
+            — WOTG System Notification
         `.trim(),
         })
         .catch((err) => console.error(`Email send error to ${admin}:`, err));
