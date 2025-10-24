@@ -567,7 +567,7 @@ exports.guestLogin = async (req, res, io) => {
     const accessToken = generateAccessToken(newUser);
 
     // 🧩 Create a unique “Welcome Chat”
-    const adminIds = [10, 49, 255, 27, 251];
+    const adminIds = [10, 49, 27, 251];
     const participants = [newUser.id, ...adminIds];
 
     const chatroom = await Chatroom.create({
@@ -650,7 +650,6 @@ Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang
         ? ["pillorajem20@gmail.com"]
         : [
             "limjucoeric@gmail.com",
-            "ericwotg@gmail.com",
             "michael.marga@gmail.com",
             "donmarper1975@gmail.com",
           ];
@@ -681,8 +680,8 @@ ${guestLink}
         .catch((err) => console.error(`Email send error to ${admin}:`, err));
     }
 
-    // 🔔 Push notifications for admins (IDs 10, 49, 255, 27, 251)
-    const pushAdminIds = [10, 49, 255, 27, 251];
+    // 🔔 Push notifications for admins (IDs 10, 49, 27, 251)
+    const pushAdminIds = [10, 49, 27, 251];
     for (const adminId of pushAdminIds) {
       const subscriptions = await Subscription.findAll({ where: { userId: adminId } });
 
