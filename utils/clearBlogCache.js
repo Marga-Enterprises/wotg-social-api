@@ -309,45 +309,57 @@ exports.clearUsersCache = async (userId) => {
   try {
     console.log("🧹 Clearing users cache...");
 
-    // ✅ Patterns aligned with the new cache key format
-    // users:page:${pageIndex}:size:${pageSize}:search:${search}:guest:${guestFilter}:from:${dateFrom}:to:${dateTo}
+    // Use a single pattern that matches ALL paginated user cache keys
+    const listPattern = "users:page:*:size:*:search:*:guest:*:from:*:to:*";
+    const userPattern = userId ? `user_${userId}*` : null;
 
-    const basePattern = "users:page:*"; // matches all pagination
-    const searchPattern = "users:page:*:size:*:search*"; // covers search filters
-    const guestPattern = "users:page:*:size:*:guest*"; // covers guest filter
-    const dateFromPattern = "users:page:*:size:*:from*"; // covers dateFrom/dateTo filters
+    // ✅ SCAN instead of KEYS (non-blocking)
+    const scanAndDelete = async (pattern) => {
+      let totalDeleted = 0;
+      let batch = [];
 
-    // Optional: specific user cache (e.g. user_15)
-    const userPattern = userId ? `user_${userId}` : null;
+      // node-redis v4 supports async iterator
+      for await (const key of redisClient.scanIterator({
+        MATCH: pattern,
+        COUNT: 500, // batch size
+      })) {
+        batch.push(key);
+        if (batch.length >= 500) {
+          await redisClient.del(...batch);
+          totalDeleted += batch.length;
+          batch = [];
+        }
+      }
 
-    // Fetch all matching keys
-    const allBaseKeys = await redisClient.keys(basePattern);
-    const allSearchKeys = await redisClient.keys(searchPattern);
-    const allGuestKeys = await redisClient.keys(guestPattern);
-    const allDateKeys = await redisClient.keys(dateFromPattern);
-    const userKeys = userPattern ? await redisClient.keys(userPattern) : [];
+      // Delete remaining batch
+      if (batch.length > 0) {
+        await redisClient.del(...batch);
+        totalDeleted += batch.length;
+      }
 
-    // Merge and deduplicate
-    const allKeys = [
-      ...new Set([
-        ...allBaseKeys,
-        ...allSearchKeys,
-        ...allGuestKeys,
-        ...allDateKeys,
-        ...userKeys,
-      ]),
-    ];
+      return totalDeleted;
+    };
 
-    // 🧹 Delete matching cache entries
-    if (allKeys.length > 0) {
-      await redisClient.del(...allKeys);
-      console.log(`🗑️ Cleared ${allKeys.length} users cache entries.`);
-    } else {
-      console.log("ℹ️ No matching users cache keys found.");
+    // 🧹 Start cleaning
+    let totalDeleted = 0;
+
+    const listDeleted = await scanAndDelete(listPattern);
+    totalDeleted += listDeleted;
+    console.log(`🗑️ Deleted ${listDeleted} user listing cache entries.`);
+
+    if (userPattern) {
+      const userDeleted = await scanAndDelete(userPattern);
+      totalDeleted += userDeleted;
+      console.log(`🗑️ Deleted ${userDeleted} user-specific cache entries (${userPattern}).`);
     }
 
-    console.log("✅ Users cache cleared.");
+    if (totalDeleted === 0) {
+      console.log("ℹ️ No matching user cache keys found.");
+    } else {
+      console.log(`✅ Users cache cleared. Total deleted: ${totalDeleted}`);
+    }
   } catch (error) {
     console.error("❌ Error clearing users cache:", error);
   }
 };
+
