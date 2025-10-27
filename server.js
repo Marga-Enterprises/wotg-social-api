@@ -49,6 +49,7 @@ const io = new Server(server, {
 // schedulers
 require("./app/schedulers/cleanupInactiveChatrooms");
 require("./app/schedulers/sendNotificationReminders");
+require("./app/schedulers/sendNotificationReminders1");
 
 // Middleware
 app.use(express.json({ limit: '10240mb' }));
