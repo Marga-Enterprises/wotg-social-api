@@ -2,34 +2,39 @@ const cron = require("node-cron");
 const Subscription = require("../models/Subscription");
 const { sendNotification } = require("../../utils/sendNotification");
 
-// 🕐 Every 15 minute — send random Bible reminder notification (test mode)
+// 🕐 Every 10 minutes — remind specific admins to reach out to new users
 cron.schedule(
-  "/15 * * * *",
+  "*/10 * * * *",
   async () => {
     const startTime = new Date();
     console.log(
-      "📖 [Cron] Bible reminder broadcast started at:",
+      "📣 [Cron] Admin reminder job started at:",
       startTime.toLocaleString("en-PH", { timeZone: "Asia/Manila" })
     );
 
     try {
-      console.log("🔍 Fetching all subscriptions...");
-      const subscriptions = await Subscription.findAll();
+      // 🎯 Target specific admin user IDs
+      const targetUserIds = [10, 49, 27, 251];
+
+      console.log(`🔍 Fetching subscriptions for admin IDs: ${targetUserIds.join(", ")}`);
+      const subscriptions = await Subscription.findAll({
+        where: { user_id: targetUserIds },
+      });
 
       if (!subscriptions.length) {
-        console.log("ℹ️ No subscriptions found in database.");
+        console.log("ℹ️ No subscriptions found for the selected admin users.");
         return;
       }
 
-      console.log(`📦 Found ${subscriptions.length} subscriptions.`);
+      console.log(`📦 Found ${subscriptions.length} active admin subscriptions.`);
 
-      // 🧠 Step 1: Prepare random Bible reminder messages
+      // ✨ Reminder messages for admins
       const reminderMessages = [
-        "Take a moment to read God's Word today",
-        "A verse a day keeps the heart strong",
-        "God’s Word is your daily bread",
-        "Pause and meditate on Scripture",
-        "Let the Word guide your steps today",
+        "Hey Admin! 👋 Don’t forget to check in with our new users today.",
+        "Friendly reminder: Reach out and chat with new users to make them feel welcome!",
+        "Time to connect with our newest members — a simple chat can make a big impact!",
+        "Reminder: Build relationships with new users. Send them a quick message today!",
+        "Let’s stay connected — message our new users and encourage them to keep growing in faith!",
       ];
 
       const message =
@@ -37,27 +42,26 @@ cron.schedule(
 
       console.log(`💬 Selected reminder message: "${message}"`);
 
-      // 🧠 Step 2: Loop through all subscriptions
+      // 🔁 Loop through each admin subscription
       for (const [index, subscription] of subscriptions.entries()) {
         console.log(
-          `➡️ [${index + 1}/${subscriptions.length}] Processing subscription ID: ${subscription.id}`
+          `➡️ [${index + 1}/${subscriptions.length}] Processing admin user ID: ${subscription.user_id}`
         );
 
         try {
           let subscriptionData = subscription.subscription;
 
-          // ✅ Parse JSON if stored as a string
+          // ✅ Parse JSON if stored as string
           if (typeof subscriptionData === "string") {
             try {
               subscriptionData = JSON.parse(subscriptionData);
-              console.log("✅ Parsed subscription JSON successfully.");
             } catch (error) {
               console.error("⚠️ Failed to parse subscription JSON:", error.message);
               continue;
             }
           }
 
-          // ✅ Detect FCM token (handles multiple formats)
+          // ✅ Detect FCM token
           const fcmToken =
             subscription.fcmToken ||
             subscription.fcm_token ||
@@ -67,7 +71,7 @@ cron.schedule(
             null;
 
           if (!fcmToken) {
-            console.warn("⚠️ No FCM token found for this subscription:", {
+            console.warn("⚠️ No FCM token found for this admin:", {
               id: subscription.id,
               user_id: subscription.user_id,
               keys: Object.keys(subscription.toJSON()),
@@ -77,43 +81,39 @@ cron.schedule(
 
           // ✅ Prepare notification payload
           const data = {
-            type: "bible_reminder",
-            url: "https://community.wotgonline.com/bible",
+            type: "admin_reminder",
+            url: "https://management.wotgonline.com/users",
           };
 
           console.log(
-            `📤 Sending notification to user ${
-              subscription.user_id || "(unknown user)"
-            } with token: ${fcmToken.slice(0, 25)}...`
+            `📤 Sending admin reminder to user ${subscription.user_id} (token: ${fcmToken.slice(
+              0,
+              25
+            )}...)`
           );
 
-          // ✅ Correct parameter order (fcmToken, title, body, data)
           await sendNotification(
             fcmToken,
-            "Daily Bible Reminder",
+            "WOTG Admin Reminder",
             message,
             data
           );
 
-          console.log(
-            `✅ Notification sent successfully to user ${
-              subscription.user_id || "(unknown user)"
-            }`
-          );
+          console.log(`✅ Reminder sent successfully to admin ${subscription.user_id}`);
         } catch (error) {
-          console.error("❌ Error sending notification for one user:", error.message);
+          console.error("❌ Error sending notification for one admin:", error.message);
         }
       }
 
       console.log(
-        "✅ [Cron] Bible reminders completed successfully at",
+        "✅ [Cron] Admin reminders completed successfully at",
         new Date().toLocaleTimeString("en-PH", { timeZone: "Asia/Manila" })
       );
     } catch (error) {
-      console.error("❌ [Cron] Fatal error in Bible reminder job:", error);
+      console.error("❌ [Cron] Fatal error in Admin Reminder Job:", error);
     }
 
-    console.log("🕒 [Cron] Job finished. Waiting for next interval...\n");
+    console.log("🕒 [Cron] Waiting for next 10-minute interval...\n");
   },
   { timezone: "Asia/Manila" }
 );
