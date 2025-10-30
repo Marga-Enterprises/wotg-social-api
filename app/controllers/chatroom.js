@@ -222,7 +222,9 @@ exports.createChatroom = async (req, res, io) => {
 
       if (existingChatroom.length > 0) {
         console.warn("⚠️ Chatroom already exists for these participants.");
-        return sendError(res, null, "A chatroom already exists for these participants.");
+        return sendError(res, { 
+            chatroomId:  existingChatroom[0].chatRoomId,
+        }, "A chatroom already exists for these participants.");
       }
 
       // 🧩 Build readable chatroom name
