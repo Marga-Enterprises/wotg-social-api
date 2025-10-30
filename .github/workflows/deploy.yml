@@ -40,5 +40,7 @@ jobs:
             echo "🐳 Rebuilding Docker containers..."
             docker compose down            # Stops and removes existing containers
             docker compose up -d --build   # Rebuilds and runs containers in detached mode
+            
+            docker restart wotg-social-admin-api # Restart admin API container
 
             echo "🚀 Deployed!"
