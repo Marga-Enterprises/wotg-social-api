@@ -39,8 +39,12 @@ cron.schedule(
 
       const chatroomsToDelete = [];
 
-      // 2️⃣ Check if target user sent a message in the last 24 hours
+      // 2️⃣ Check message activity and guest status
       for (const chat of welcomeChats) {
+        const user = await User.findByPk(chat.target_user_id, { transaction });
+
+        if (!user) continue;
+
         const hasRecentMessage = await Message.findOne({
           where: {
             chatroom_id: chat.id,
@@ -50,27 +54,33 @@ cron.schedule(
           transaction,
         });
 
-        const user = await User.findByPk(chat.target_user_id);
+        const guest_account = user.guest_account;
+        const isGuest = guest_account === true;
 
-        await user.update({
-          guest_status: hasRecentMessage ? "active" : "abandoned",
-        });
+        // Update guest_status depending on activity
+        await user.update(
+          {
+            guest_status: hasRecentMessage || !isGuest ? "active" : "abandoned",
+          },
+          { transaction }
+        );
 
         await clearUsersCache(chat.target_user_id);
 
-        if (!hasRecentMessage) {
+        // 🧠 DELETE only if user is still guest AND no recent message
+        if (isGuest && !hasRecentMessage) {
           chatroomsToDelete.push(chat.id);
         }
       }
 
       if (chatroomsToDelete.length === 0) {
-        console.log("✅ [CRON] All welcome chats are active.");
+        console.log("✅ [CRON] No inactive guest welcome chats to delete.");
         await transaction.commit();
         return;
       }
 
       console.log(
-        `⚠️ [CRON] Found ${chatroomsToDelete.length} inactive welcome chats:`,
+        `⚠️ [CRON] Found ${chatroomsToDelete.length} inactive guest welcome chats:`,
         chatroomsToDelete
       );
 
@@ -110,7 +120,7 @@ cron.schedule(
 
       // ✅ Commit DB changes
       await transaction.commit();
-      console.log(`🧽 [CRON] Deleted ${chatroomsToDelete.length} inactive welcome chatrooms.`);
+      console.log(`🧽 [CRON] Deleted ${chatroomsToDelete.length} inactive guest welcome chatrooms.`);
 
       // 🧠 Clear Redis/Cache
       await clearChatroomsCache();
