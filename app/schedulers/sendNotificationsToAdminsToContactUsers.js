@@ -4,7 +4,7 @@ const { sendNotification } = require("../../utils/sendNotification");
 
 // 🕐 Every 10 minutes — remind specific admins to reach out to new users
 cron.schedule(
-  "*/10 * * * *",
+  "0 * * * *",
   async () => {
     const startTime = new Date();
     console.log(

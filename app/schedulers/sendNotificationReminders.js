@@ -4,7 +4,7 @@ const { sendNotification } = require("../../utils/sendNotification");
 
 // 🕐 Every 15 minute — send random Bible reminder notification (test mode)
 cron.schedule(
-  "*/15 * * * *",
+  "0 * * * *",
   async () => {
     const startTime = new Date();
     console.log(

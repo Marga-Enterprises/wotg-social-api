@@ -5,7 +5,7 @@ const { sendNotification } = require("../../utils/sendNotification");
 
 // ⏰ Every 30 minutes (minute 0 and 30)
 cron.schedule(
-  "*/30 * * * *",
+  "0 * * * *",
   async () => {
     const startTime = new Date();
     console.log(

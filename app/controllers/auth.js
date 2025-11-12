@@ -649,9 +649,9 @@ Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang
       process.env.NODE_ENV === "development"
         ? ["pillorajem10@gmail.com"]
         : [
-            "limjucoeric@gmail.com",
+            // "limjucoeric@gmail.com",
             "michael.marga@gmail.com",
-            "donmarper1975@gmail.com",
+            // "donmarper1975@gmail.com",
           ];
 
     const guestLink =
