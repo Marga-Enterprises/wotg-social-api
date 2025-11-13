@@ -344,9 +344,6 @@ exports.updateUserThroughChat = async (req, res, io) => {
     • Email: ${email}
     • Password: 12345678
 
-    Pwede mo nang i-access ang community menu dito:
-    ${menuPageLink}
-
     Kung ikaw ay lalaki, maari mong i-message direkta ang ating admin dito:
     👉 https://m.me/eric.limjuco
 
@@ -391,7 +388,6 @@ exports.logoutUser = async (req, res) => {
     return res.status(500).json({ error: "Internal server error." });
   }
 };
-
 
 
 // controller to handle forgot password
