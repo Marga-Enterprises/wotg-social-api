@@ -336,7 +336,7 @@ exports.updateUserThroughChat = async (req, res, io) => {
     });
 
     const messageContent = 
-    `Kapatid, kumpleto na ang iyong registration! 🙌
+    `Kapatid, kumpleto na ang iyong registration!
 
     Narito ang iyong detalye:
 
@@ -344,15 +344,11 @@ exports.updateUserThroughChat = async (req, res, io) => {
     • Email: ${email}
     • Password: 12345678
 
-    Kung ikaw ay lalaki, maari mong i-message direkta ang ating admin dito:
-    👉 https://m.me/eric.limjuco
+    Para sa anumang tulong o katanungan, maari mong i-message direkta ang aming admin dito:
+    👉 https://m.me/wotg.wordonthego
 
-    Kung ikaw naman ay babae, maari mong i-message direkta ang ating admin dito:
-    👉 https://m.me/ate.dona.perez
-
-    May volunteer na tutulong sa'yo sa iyong next steps.  
-    Pwede mo rin silang i-chat ngayon kung gusto mo. 🙏`;
-
+    May volunteer na tutulong sa'yo sa iyong next steps.
+    Pwede mo rin silang i-chat ngayon kung handa ka na.`;
 
     if (chatroom) {
       await createAndEmitMessage({
@@ -607,31 +603,32 @@ exports.guestLogin = async (req, res, io) => {
     // Automated welcome message
     await createAndEmitMessage({
       content: 
-    `Hello kapatid! 👋  
-    Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.  
-    Dito ay makikita mo ang mga inspiring features gaya ng *daily devotions, Bible, journal, community feeds,* at marami pang iba.  
-    Maaari ka ring makipag-ugnayan sa amin dito mismo!
+    `Hello kapatid!
 
-    Para makapagsimula, i-click mo muna ang **Sign Up** button sa ibaba at ilagay ang iyong:
-    • First Name  
-    • Last Name  
-    • Email Address  
+    Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.
+    Dito ay makikita mo ang mga makakatulong na features tulad ng daily devotions,
+    Bible tools, journal, community feeds, at marami pang iba.
+    Maaari ka ring makipag-ugnayan sa amin dito mismo sa chat.
 
-    Kapag nakapag-sign up ka na, maikokonek na kita sa ating team para tulungan kang makilala pa nang mas malalim ang Panginoon. 🙏
+    Para makapagsimula, i-click mo muna ang Sign Up button sa ibaba at ilagay ang iyong:
+    • First Name
+    • Last Name
+    • Email Address
 
-    Kung ikaw ay **lalaki**, maaari mong direktang i-message ang ating admin dito:  
-    👉 https://m.me/eric.limjuco
+    Kapag tapos ka na sa registration, ikokonek ka namin sa aming team
+    upang matulungan ka sa iyong next steps sa iyong spiritual journey.
 
-    Kung ikaw ay **babae**, maaari mong direktang i-message ang ating admin dito:  
-    👉 https://m.me/ate.dona.perez
+    Kung nais mo ng agarang tulong o may katanungan,
+    maaari mong direktang i-message ang aming admin dito:
+    https://m.me/wotg.wordonthego
 
-    Pwede mo silang i-chat anytime kung may tanong ka o gusto mong ipag-pray. 🙏`,
+    Huwag mag-atubiling mag-chat kung kailangan mo ng gabay o panalangin.`,
       senderId: 10,
       chatroomId: chatroom.id,
       type: "text",
       category: "automated",
       targetUserId: newUser.id,
-      io,
+      io
     });
 
     // Final response
