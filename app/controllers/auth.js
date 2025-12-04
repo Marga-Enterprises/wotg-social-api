@@ -507,7 +507,6 @@ exports.guestLogin = async (req, res, io) => {
     const plainPassword = crypto.randomBytes(8).toString("hex");
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
-    // Create guest user
     const [newUser, created] = await User.findOrCreate({
       where: { email },
       defaults: {
@@ -518,19 +517,25 @@ exports.guestLogin = async (req, res, io) => {
         user_role: "guest",
         user_gender: null,
         guest_account: true,
-        guest_status: "no_contact"
+        guest_status: "no_contact",
       },
     });
 
     if (!created) {
-      return sendErrorUnauthorized(res, {}, "Guest account already exists.", 400, 201);
+      return sendErrorUnauthorized(
+        res,
+        {},
+        "Guest account already exists.",
+        400,
+        201
+      );
     }
 
     if (!newUser.guest_account) {
       await newUser.update({ guest_account: true });
     }
 
-    // Clear cached user list
+    // Clear cached user list (log only if it fails)
     try {
       await clearUsersCache();
     } catch (cacheErr) {
@@ -600,38 +605,41 @@ exports.guestLogin = async (req, res, io) => {
       io.emit("new_chatroom", chatroomWithParticipants);
     }
 
-    // Automated welcome message
-    await createAndEmitMessage({
-      content: 
-    `Hello kapatid!
+    // Automated welcome message (wrap errors so they don't hit the main catch)
+    try {
+      await createAndEmitMessage({
+        content: `Hello kapatid!
 
-    Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.
-    Dito ay makikita mo ang mga makakatulong na features tulad ng daily devotions,
-    Bible tools, journal, community feeds, at marami pang iba.
-    Maaari ka ring makipag-ugnayan sa amin dito mismo sa chat.
+Maraming salamat sa pag-bisita sa ating Word on the Go (WOTG) app.
+Dito ay makikita mo ang mga makakatulong na features tulad ng daily devotions,
+Bible tools, journal, community feeds, at marami pang iba.
+Maaari ka ring makipag-ugnayan sa amin dito mismo sa chat.
 
-    Para makapagsimula, i-click mo muna ang Sign Up button sa ibaba at ilagay ang iyong:
-    • First Name
-    • Last Name
-    • Email Address
+Para makapagsimula, i-click mo muna ang Sign Up button sa ibaba at ilagay ang iyong:
+• First Name
+• Last Name
+• Email Address
 
-    Kapag tapos ka na sa registration, ikokonek ka namin sa aming team
-    upang matulungan ka sa iyong next steps sa iyong spiritual journey.
+Kapag tapos ka na sa registration, ikokonek ka namin sa aming team
+upang matulungan ka sa iyong next steps sa iyong spiritual journey.
 
-    Kung nais mo ng agarang tulong o may katanungan,
-    maaari mong direktang i-message ang aming admin dito:
-    https://m.me/wotg.wordonthego
+Kung nais mo ng agarang tulong o may katanungan,
+maaari mong direktang i-message ang aming admin dito:
+https://m.me/wotg.wordonthego
 
-    Huwag mag-atubiling mag-chat kung kailangan mo ng gabay o panalangin.`,
-      senderId: 10,
-      chatroomId: chatroom.id,
-      type: "text",
-      category: "automated",
-      targetUserId: newUser.id,
-      io
-    });
+Huwag mag-atubiling mag-chat kung kailangan mo ng gabay o panalangin.`,
+        senderId: 10,
+        chatroomId: chatroom.id,
+        type: "text",
+        category: "automated",
+        targetUserId: newUser.id,
+        io,
+      });
+    } catch (msgErr) {
+      console.error("Failed to create welcome message:", msgErr.message);
+    }
 
-    // Final response
+    // ✅ Send response ONCE here
     sendSuccess(
       res,
       { accessToken, chatroomLoginId: chatroom.id },
@@ -639,66 +647,84 @@ exports.guestLogin = async (req, res, io) => {
       201
     );
 
-    // Send admin email notifications
-    const adminEmails =
-      process.env.NODE_ENV === "development"
-        ? ["pillorajem10@gmail.com"]
-        : ["michael.marga@gmail.com"];
+    // 🔔 Fire-and-forget extras: emails & push notifications
+    (async () => {
+      try {
+        const adminEmails =
+          process.env.NODE_ENV === "development"
+            ? ["pillorajem10@gmail.com"]
+            : ["michael.marga@gmail.com"];
 
-    const guestLink =
-      process.env.NODE_ENV === "development"
-        ? `http://localhost:3000/chat?chat=${chatroom.id}`
-        : `https://community.wotgonline.com/chat?chat=${chatroom.id}`;
+        const guestLink =
+          process.env.NODE_ENV === "development"
+            ? `http://localhost:3000/chat?chat=${chatroom.id}`
+            : `https://community.wotgonline.com/chat?chat=${chatroom.id}`;
 
-    for (const admin of adminEmails) {
-      transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to: admin,
-        subject: `New Guest Account Created (${user_fname} ${user_lname})`,
-        text:
-          `A new guest has joined Word on the Go.\n\n` +
-          `Name: ${user_fname} ${user_lname}\n\n` +
-          `Chatroom: ${guestLink}\n\n` +
-          `WOTG System Notification`,
-      })
-      .catch((err) => console.error(`Email send error to ${admin}:`, err));
-    }
-
-    // Push notifications for admin users
-    const pushAdminIds = [10, 49, 27, 251];
-    for (const adminId of pushAdminIds) {
-      const subscriptions = await Subscription.findAll({ where: { userId: adminId } });
-
-      for (const sub of subscriptions) {
-        try {
-          const subData = typeof sub.subscription === "string"
-            ? JSON.parse(sub.subscription)
-            : sub.subscription;
-
-          const fcmToken = subData?.fcmToken;
-          if (fcmToken) {
-            await sendNotification(
-              fcmToken,
-              "New Guest Account Created",
-              `A new guest (${user_fname} ${user_lname}) has joined Word on the Go.`,
-              {
-                chatroomId: chatroom.id.toString(),
-                type: "guest_joined",
-                url: guestLink,
-              }
+        for (const admin of adminEmails) {
+          transporter
+            .sendMail({
+              from: process.env.EMAIL_USER,
+              to: admin,
+              subject: `New Guest Account Created (${user_fname} ${user_lname})`,
+              text:
+                `A new guest has joined Word on the Go.\n\n` +
+                `Name: ${user_fname} ${user_lname}\n\n` +
+                `Chatroom: ${guestLink}\n\n` +
+                `WOTG System Notification`,
+            })
+            .catch((err) =>
+              console.error(`Email send error to ${admin}:`, err)
             );
-          }
-        } catch (err) {
-          console.error(`Push notification error for admin ${adminId}:`, err.message);
         }
-      }
-    }
 
+        const pushAdminIds = [10, 49, 27, 251];
+        for (const adminId of pushAdminIds) {
+          const subscriptions = await Subscription.findAll({
+            where: { userId: adminId },
+          });
+
+          for (const sub of subscriptions) {
+            try {
+              const subData =
+                typeof sub.subscription === "string"
+                  ? JSON.parse(sub.subscription)
+                  : sub.subscription;
+
+              const fcmToken = subData?.fcmToken;
+              if (fcmToken) {
+                await sendNotification(
+                  fcmToken,
+                  "New Guest Account Created",
+                  `A new guest (${user_fname} ${user_lname}) has joined Word on the Go.`,
+                  {
+                    chatroomId: chatroom.id.toString(),
+                    type: "guest_joined",
+                    url: guestLink,
+                  }
+                );
+              }
+            } catch (err) {
+              console.error(
+                `Push notification error for admin ${adminId}:`,
+                err.message
+              );
+            }
+          }
+        }
+      } catch (bgErr) {
+        console.error("Background notification error:", bgErr.message);
+      }
+    })();
   } catch (err) {
     console.error("Guest Login Error:", err);
-    return res.status(500).json({ error: "Internal server error." });
+
+    // 🔐 Avoid double-send just in case
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Internal server error." });
+    }
   }
 };
+
 
 
 const createAndEmitMessage = async ({
